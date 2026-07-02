@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'config/app_config.dart';
-import 'game_screen.dart';
 import 'models.dart';
+import 'solitaire/solitaire_game_screen.dart';
 import 'services/ad_service.dart';
 import 'services/daily_challenge_service.dart';
 import 'services/level_api_service.dart';
@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_levels.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => GameScreen(
+        builder: (_) => SolitaireGameScreen(
           session: GameSession(
             mode: GameMode.classic,
             levels: _levels,
@@ -98,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
         widget.dailyChallengeService.dailyLevelForDate(_levels, today);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => GameScreen(
+        builder: (_) => SolitaireGameScreen(
           session: GameSession(
             mode: GameMode.daily,
             levels: _levels,
