@@ -18,6 +18,12 @@ workflows:
     integrations:
       app_store_connect: AppStoreConnectKey
     environment:
+      groups:
+        # Create this variable group in the Codemagic UI and add a SECURE
+        # variable named CERTIFICATE_PRIVATE_KEY (the reusable signing key).
+        # This lets the pipeline reuse ONE distribution certificate instead of
+        # creating a new one every build (which hits Apple's certificate limit).
+        - signing
       vars:
         # Replace with your app's numeric Apple ID from App Store Connect
         # (App Store Connect > your app > App Information > "Apple ID").
