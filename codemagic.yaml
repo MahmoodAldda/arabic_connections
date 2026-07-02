@@ -24,7 +24,7 @@ workflows:
       vars:
         # Replace with your app's numeric Apple ID from App Store Connect
         # (App Store Connect > your app > App Information > "Apple ID").
-        APP_STORE_APP_ID: 0000000000
+        APP_STORE_APP_ID: 6786693634
         BUNDLE_ID: "com.mahmooda.arabicconnections"
       flutter: 3.44.4
     scripts:
