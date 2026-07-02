@@ -1,0 +1,60 @@
+{
+  "levels": [
+    {
+      "number": 4,
+      "title": "الطبيعة والفصول",
+      "categories": [
+        { "id": "seasons", "name": "فصول", "color": "#FF9600" },
+        { "id": "trees", "name": "أشجار", "color": "#58CC02" },
+        { "id": "flowers", "name": "زهور", "color": "#CE82FF" },
+        { "id": "rivers", "name": "أنهار", "color": "#1CB0F6" }
+      ],
+      "words": [
+        { "id": "w1", "text": "شتاء", "categoryId": "seasons" },
+        { "id": "w2", "text": "صيف", "categoryId": "seasons" },
+        { "id": "w3", "text": "خريف", "categoryId": "seasons" },
+        { "id": "w4", "text": "ربيع", "categoryId": "seasons" },
+        { "id": "w5", "text": "نخيل", "categoryId": "trees" },
+        { "id": "w6", "text": "صنوبر", "categoryId": "trees" },
+        { "id": "w7", "text": "زيتون", "categoryId": "trees" },
+        { "id": "w8", "text": "تين", "categoryId": "trees" },
+        { "id": "w9", "text": "ورد", "categoryId": "flowers" },
+        { "id": "w10", "text": "ياسمين", "categoryId": "flowers" },
+        { "id": "w11", "text": "فل", "categoryId": "flowers" },
+        { "id": "w12", "text": "لوتس", "categoryId": "flowers" },
+        { "id": "w13", "text": "نيل", "categoryId": "rivers" },
+        { "id": "w14", "text": "دجلة", "categoryId": "rivers" },
+        { "id": "w15", "text": "فرات", "categoryId": "rivers" },
+        { "id": "w16", "text": "أردن", "categoryId": "rivers" }
+      ]
+    },
+    {
+      "number": 5,
+      "title": "الرياضة والترفيه",
+      "categories": [
+        { "id": "sports", "name": "رياضة", "color": "#E76F51" },
+        { "id": "music", "name": "موسيقى", "color": "#7B68EE" },
+        { "id": "games", "name": "ألعاب", "color": "#4EA8DE" },
+        { "id": "movies", "name": "سينما", "color": "#E0567A" }
+      ],
+      "words": [
+        { "id": "w1", "text": "كرة", "categoryId": "sports" },
+        { "id": "w2", "text": "سباحة", "categoryId": "sports" },
+        { "id": "w3", "text": "ملاكمة", "categoryId": "sports" },
+        { "id": "w4", "text": "تنس", "categoryId": "sports" },
+        { "id": "w5", "text": "عود", "categoryId": "music" },
+        { "id": "w6", "text": "ناي", "categoryId": "music" },
+        { "id": "w7", "text": "طبلة", "categoryId": "music" },
+        { "id": "w8", "text": "كمان", "categoryId": "music" },
+        { "id": "w9", "text": "شطرنج", "categoryId": "games" },
+        { "id": "w10", "text": "ورق", "categoryId": "games" },
+        { "id": "w11", "text": "أحجية", "categoryId": "games" },
+        { "id": "w12", "text": "نرد", "categoryId": "games" },
+        { "id": "w13", "text": "دراما", "categoryId": "movies" },
+        { "id": "w14", "text": "كوميديا", "categoryId": "movies" },
+        { "id": "w15", "text": "وثائقي", "categoryId": "movies" },
+        { "id": "w16", "text": "رسوم", "categoryId": "movies" }
+      ]
+    }
+  ]
+}
