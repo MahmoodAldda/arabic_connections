@@ -18,9 +18,6 @@ workflows:
     integrations:
       app_store_connect: AppStoreConnectKey
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.mahmooda.arabicconnections
       vars:
         # Replace with your app's numeric Apple ID from App Store Connect
         # (App Store Connect > your app > App Information > "Apple ID").
