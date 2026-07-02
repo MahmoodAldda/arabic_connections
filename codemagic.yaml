@@ -29,9 +29,26 @@ workflows:
         script: keychain initialize
       - name: Fetch or create signing files
         script: |
+          set -e
+          CERT_KEY_PATH="$CM_BUILD_DIR/ios_distribution_key.pem"
+          if [ -n "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "Reusing stored certificate private key (CERTIFICATE_PRIVATE_KEY)."
+            printf '%s' "$CERTIFICATE_PRIVATE_KEY" > "$CERT_KEY_PATH"
+          else
+            echo "No stored key found — generating a new signing certificate private key."
+            openssl genrsa -out "$CERT_KEY_PATH" 2048
+            echo "-------------------------------------------------------------------"
+            echo "TIP: To reuse this certificate on future builds (and avoid Apple's"
+            echo "certificate limit), copy the key below into a SECRET Codemagic env"
+            echo "variable named CERTIFICATE_PRIVATE_KEY, then rebuild."
+            echo "-------------------------------------------------------------------"
+            cat "$CERT_KEY_PATH"
+            echo "-------------------------------------------------------------------"
+          fi
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --certificate-key=@file:"$CERT_KEY_PATH"
       - name: Add signing certificate to keychain
         script: keychain add-certificates
       - name: Set up code signing settings on Xcode project
