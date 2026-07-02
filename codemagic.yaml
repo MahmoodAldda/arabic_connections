@@ -28,6 +28,15 @@ workflows:
         BUNDLE_ID: "com.mahmooda.arabicconnections"
       flutter: 3.44.4
     scripts:
+      - name: Initialize keychain
+        script: keychain initialize
+      - name: Fetch or create signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Add signing certificate to keychain
+        script: keychain add-certificates
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Get Flutter packages
