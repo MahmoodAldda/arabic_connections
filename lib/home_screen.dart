@@ -3,12 +3,16 @@ import 'package:flutter/services.dart';
 
 import 'config/app_config.dart';
 import 'models.dart';
-import 'solitaire/solitaire_game_screen.dart';
 import 'services/ad_service.dart';
 import 'services/daily_challenge_service.dart';
 import 'services/level_api_service.dart';
 import 'services/player_service.dart';
+import 'services/sound_service.dart';
+import 'solitaire/solitaire_game_screen.dart';
 import 'theme/game_theme.dart';
+import 'widgets/animated_coin_badge.dart';
+import 'widgets/decor_background.dart';
+import 'widgets/premium_route.dart';
 import 'widgets/pressable_button.dart';
 
 /// Main menu — daily challenge, classic play, coins, and rewarded ads.
@@ -73,9 +77,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openClassic({int levelIndex = 0}) {
     if (_levels.isEmpty) return;
+    SoundService.instance.play(SoundFx.button);
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SolitaireGameScreen(
+      premiumRoute<void>(
+        SolitaireGameScreen(
           session: GameSession(
             mode: GameMode.classic,
             levels: _levels,
@@ -96,9 +101,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final today = DateTime.now();
     final dailyLevel =
         widget.dailyChallengeService.dailyLevelForDate(_levels, today);
+    SoundService.instance.play(SoundFx.button);
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SolitaireGameScreen(
+      premiumRoute<void>(
+        SolitaireGameScreen(
           session: GameSession(
             mode: GameMode.daily,
             levels: _levels,
@@ -126,10 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message, textAlign: TextAlign.center),
-          behavior: SnackBarBehavior.floating,
-        ),
+        SnackBar(content: Text(message, textAlign: TextAlign.center)),
       );
   }
 
@@ -144,10 +147,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          const _MenuBackground(),
+          const Positioned.fill(
+            child: DecorBackground(
+              gradient: GameGradients.appBackground,
+              blobs: [Color(0xFF9BE7B4), Color(0xFF9AD8FF), Color(0xFFFFE0A3)],
+            ),
+          ),
           SafeArea(
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: GameColors.green))
+                ? const Center(
+                    child: CircularProgressIndicator(color: GameColors.green))
                 : RefreshIndicator(
                     onRefresh: _loadLevels,
                     color: GameColors.green,
@@ -157,43 +166,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                       children: [
-                        _TopBar(coins: widget.playerService.coins),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Arabic\nConnections',
-                          textAlign: TextAlign.center,
-                          style: GameTextStyles.title.copyWith(
-                            fontSize: 34,
-                            height: 1.15,
-                            color: GameColors.greenDark,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            AnimatedCoinBadge(count: widget.playerService.coins),
+                          ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 22),
+                        const _BrandTitle(),
+                        const SizedBox(height: 6),
                         Text(
-                          'جمّع الكلمات في مجموعات',
+                          'رتّب الكلمات في مجموعاتها',
                           textAlign: TextAlign.center,
                           style: GameTextStyles.subtitle.copyWith(fontSize: 16),
                         ),
                         if (_error != null) ...[
                           const SizedBox(height: 12),
-                          Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: GameColors.red)),
+                          Text(_error!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: GameColors.red)),
                         ],
                         const SizedBox(height: 28),
                         _DailyChallengeCard(
                           completed: dailyDone,
-                          dateLabel: widget.dailyChallengeService.formattedDate(today),
+                          dateLabel:
+                              widget.dailyChallengeService.formattedDate(today),
                           levelTitle: dailyLevel?.title ?? '—',
                           reward: GameEconomy.dailyChallengeReward,
                           onPlay: _levels.isEmpty ? null : _openDaily,
                         ),
                         const SizedBox(height: 16),
                         PressableButton(
-                          label: 'العب الكلاسيكي',
+                          label: 'العب الآن',
                           icon: Icons.play_arrow_rounded,
+                          gradient: GameGradients.green,
                           enabled: _levels.isNotEmpty,
+                          height: 58,
                           onPressed: _levels.isEmpty ? null : () => _openClassic(),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
                         _LevelGrid(
                           levels: _levels,
                           onLevelTap: (i) => _openClassic(levelIndex: i),
@@ -214,56 +225,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _MenuBackground extends StatelessWidget {
-  const _MenuBackground();
+class _BrandTitle extends StatelessWidget {
+  const _BrandTitle();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFE8F9E0), GameColors.background],
+    return ShaderMask(
+      shaderCallback: (rect) => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF3FBF5A), Color(0xFF1E8B4C)],
+      ).createShader(rect),
+      child: Text(
+        'Arabic\nConnections',
+        textAlign: TextAlign.center,
+        style: GameTextStyles.display.copyWith(
+          fontSize: 38,
+          height: 1.1,
+          color: Colors.white,
+          shadows: const [
+            Shadow(color: Color(0x22000000), blurRadius: 8, offset: Offset(0, 3)),
+          ],
         ),
       ),
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.coins});
-
-  final int coins;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: GameDecorations.card(
-            faceColor: const Color(0xFFFFF8E1),
-            edgeColor: const Color(0xFFFFC800),
-            radius: 14,
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.monetization_on_rounded, color: Color(0xFFFFC800), size: 22),
-              const SizedBox(width: 6),
-              Text(
-                '$coins',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
-                  color: Color(0xFFE6A800),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
@@ -289,31 +273,49 @@ class _DailyChallengeCard extends StatelessWidget {
       onTap: completed ? null : onPlay,
       child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: GameDecorations.card(
-          faceColor: completed ? GameColors.border : GameColors.blue,
-          edgeColor: completed ? GameColors.borderDark : GameColors.blueDark,
-          radius: 22,
+        decoration: BoxDecoration(
+          gradient: completed
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFB8C4CE), Color(0xFF97A6B2)],
+                )
+              : GameGradients.blue,
+          borderRadius: BorderRadius.circular(GameRadii.xl),
+          boxShadow: completed
+              ? GameShadows.soft
+              : GameShadows.glow(GameColors.blue, opacity: 0.4),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Icon(
-                  completed ? Icons.check_circle_rounded : Icons.local_fire_department_rounded,
-                  color: Colors.white,
-                  size: 28,
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(GameRadii.md),
+                  ),
+                  child: Icon(
+                    completed
+                        ? Icons.check_circle_rounded
+                        : Icons.local_fire_department_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'تحدي اليوم',
-                        style: TextStyle(
+                        style: GameTextStyles.title.copyWith(
                           color: Colors.white,
-                          fontWeight: FontWeight.w800,
                           fontSize: 20,
                         ),
                       ),
@@ -328,21 +330,21 @@ class _DailyChallengeCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(GameRadii.pill),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.monetization_on_rounded, color: Colors.white, size: 18),
+                      const Icon(Icons.monetization_on_rounded,
+                          color: Colors.white, size: 18),
                       const SizedBox(width: 4),
                       Text(
                         '+$reward',
                         style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                        ),
+                            color: Colors.white, fontWeight: FontWeight.w800),
                       ),
                     ],
                   ),
@@ -361,17 +363,17 @@ class _DailyChallengeCard extends StatelessWidget {
             if (!completed) ...[
               const SizedBox(height: 14),
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 13),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(GameRadii.md),
+                  boxShadow: GameShadows.soft,
                 ),
-                child: const Text(
+                child: Text(
                   'ابدأ التحدي',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: GameTextStyles.button.copyWith(
                     color: GameColors.blueDark,
-                    fontWeight: FontWeight.w800,
                     fontSize: 16,
                   ),
                 ),
@@ -390,6 +392,13 @@ class _LevelGrid extends StatelessWidget {
   final List<Level> levels;
   final ValueChanged<int> onLevelTap;
 
+  static const _tileGradients = [
+    GameGradients.green,
+    GameGradients.blue,
+    GameGradients.orange,
+    GameGradients.purple,
+  ];
+
   @override
   Widget build(BuildContext context) {
     if (levels.isEmpty) return const SizedBox.shrink();
@@ -397,29 +406,37 @@ class _LevelGrid extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('المستويات (${levels.length})', style: GameTextStyles.subtitle),
-        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.only(right: 4, bottom: 10),
+          child: Text('المستويات (${levels.length})',
+              style: GameTextStyles.title.copyWith(fontSize: 18)),
+        ),
         Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: 12,
+          runSpacing: 12,
           children: List.generate(levels.length, (i) {
+            final gradient = _tileGradients[i % _tileGradients.length];
             return GestureDetector(
               onTap: () => onLevelTap(i),
               child: Container(
-                width: 56,
-                height: 56,
-                decoration: GameDecorations.card(
-                  faceColor: GameColors.surface,
-                  edgeColor: GameColors.borderDark,
-                  radius: 14,
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(GameRadii.md),
+                  boxShadow: GameShadows.card,
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   '${levels[i].number}',
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                    color: GameColors.textPrimary,
+                    fontSize: 20,
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(color: Color(0x40000000), blurRadius: 3, offset: Offset(0, 1)),
+                    ],
                   ),
                 ),
               ),
@@ -446,28 +463,32 @@ class _RewardedAdCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: GameDecorations.panel(),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(GameRadii.lg),
+        boxShadow: GameShadows.soft,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
+      ),
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
-            decoration: GameDecorations.card(
-              faceColor: GameColors.orange,
-              edgeColor: GameColors.orangeDark,
-              radius: 12,
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              gradient: GameGradients.orange,
+              borderRadius: BorderRadius.circular(GameRadii.md),
+              boxShadow: GameShadows.glow(GameColors.orange, opacity: 0.35),
             ),
-            child: const Icon(Icons.play_circle_outline_rounded, color: Colors.white),
+            child: const Icon(Icons.play_circle_outline_rounded,
+                color: Colors.white, size: 26),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'شاهد إعلاناً',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                ),
+                Text('شاهد إعلاناً',
+                    style: GameTextStyles.title.copyWith(fontSize: 16)),
                 Text(
                   ready ? '+$coins عملة مجاناً' : 'جاري التحميل…',
                   style: GameTextStyles.subtitle,
@@ -477,7 +498,9 @@ class _RewardedAdCard extends StatelessWidget {
           ),
           TextButton(
             onPressed: ready ? onWatch : null,
-            child: const Text('شاهد', style: TextStyle(fontWeight: FontWeight.w800)),
+            child: Text('شاهد',
+                style: GameTextStyles.button
+                    .copyWith(fontSize: 15, color: GameColors.orangeDark)),
           ),
         ],
       ),

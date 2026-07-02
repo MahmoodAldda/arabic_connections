@@ -94,6 +94,29 @@ class SolitaireEngine {
   int _moves = 0;
   int get moves => _moves;
 
+  int _mistakes = 0;
+  int get mistakes => _mistakes;
+
+  int _combo = 0;
+
+  /// Current run of consecutive correct placements (resets on a mistake).
+  int get combo => _combo;
+
+  int _bestCombo = 0;
+  int get bestCombo => _bestCombo;
+
+  int _streak = 0;
+
+  /// Consecutive completed categories (resets on a mistake).
+  int get streak => _streak;
+
+  /// Star rating (1..3) based on how cleanly the level was solved.
+  int get stars {
+    if (_mistakes == 0) return 3;
+    if (_mistakes <= 2) return 2;
+    return 1;
+  }
+
   /// Number of fully-completed category piles (0..4).
   int get completedCount => foundations.where((f) => f.isComplete).length;
 
@@ -117,6 +140,10 @@ class SolitaireEngine {
     }
     _history.clear();
     _moves = 0;
+    _mistakes = 0;
+    _combo = 0;
+    _bestCombo = 0;
+    _streak = 0;
   }
 
   /// The playable card at the front of each column (null for empty columns),
@@ -160,6 +187,8 @@ class SolitaireEngine {
   /// Returns [PlaceOutcome.rejected] without mutating state if the move is illegal.
   PlaceResult tryPlace(WordItem word, int foundationIndex) {
     if (!canPlace(word, foundationIndex)) {
+      _mistakes++;
+      _combo = 0;
       return const PlaceResult(PlaceOutcome.rejected);
     }
 
@@ -177,10 +206,13 @@ class SolitaireEngine {
       claimedCategory: claimed,
     ));
     _moves++;
+    _combo++;
+    if (_combo > _bestCombo) _bestCombo = _combo;
 
     final outcome = foundation.isComplete
         ? PlaceOutcome.completed
         : (claimed ? PlaceOutcome.started : PlaceOutcome.matched);
+    if (outcome == PlaceOutcome.completed) _streak++;
     return PlaceResult(outcome, foundationIndex: foundationIndex);
   }
 

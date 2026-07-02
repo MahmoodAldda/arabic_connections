@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'home_screen.dart';
 import 'services/ad_service.dart';
@@ -59,6 +60,7 @@ class ArabicConnectionsApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: GameColors.background,
+        textTheme: GoogleFonts.cairoTextTheme(),
         colorScheme: const ColorScheme.light(
           primary: GameColors.green,
           secondary: GameColors.blue,
@@ -73,8 +75,14 @@ class ArabicConnectionsApp extends StatelessWidget {
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          backgroundColor: GameColors.red,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(GameRadii.md),
+          ),
+          backgroundColor: GameColors.ink,
+          contentTextStyle: GoogleFonts.cairo(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       locale: const Locale('ar'),

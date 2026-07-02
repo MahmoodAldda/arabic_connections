@@ -12,6 +12,7 @@ class PressableButton extends StatefulWidget {
     this.enabled = true,
     this.faceColor = GameColors.green,
     this.edgeColor = GameColors.greenDark,
+    this.gradient,
     this.textColor = Colors.white,
     this.icon,
     this.height = 54,
@@ -23,6 +24,9 @@ class PressableButton extends StatefulWidget {
   final bool enabled;
   final Color faceColor;
   final Color edgeColor;
+
+  /// Optional gradient face for a premium look. Falls back to [faceColor].
+  final Gradient? gradient;
   final Color textColor;
   final IconData? icon;
   final double height;
@@ -84,7 +88,18 @@ class _PressableButtonState extends State<PressableButton>
     final disabled = !widget.enabled;
     final face = disabled ? GameColors.border : widget.faceColor;
     final edge = disabled ? GameColors.borderDark : widget.edgeColor;
+    final useGradient = widget.gradient != null && !disabled;
     final pressOffset = _pressed ? 3.0 : 0.0;
+    final decoration = useGradient
+        ? BoxDecoration(
+            gradient: widget.gradient,
+            borderRadius: BorderRadius.circular(GameRadii.md),
+            border: Border(
+              bottom: BorderSide(color: edge, width: 4),
+            ),
+            boxShadow: GameShadows.glow(widget.edgeColor, opacity: 0.35),
+          )
+        : GameDecorations.card(faceColor: face, edgeColor: edge, radius: GameRadii.md);
 
     return AnimatedBuilder(
       animation: _pulseController,
@@ -104,7 +119,7 @@ class _PressableButtonState extends State<PressableButton>
           curve: Curves.easeOut,
           height: widget.height,
           transform: Matrix4.translationValues(0, pressOffset, 0),
-          decoration: GameDecorations.card(faceColor: face, edgeColor: edge, radius: 18),
+          decoration: decoration,
           child: Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,

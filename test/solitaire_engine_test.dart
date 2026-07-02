@@ -91,6 +91,51 @@ void main() {
     });
   });
 
+  group('SolitaireEngine scoring', () {
+    test('successful placements build a combo', () {
+      final engine = SolitaireEngine(_buildLevel());
+      expect(engine.combo, 0);
+      final m1 = engine.suggestMove()!;
+      engine.tryPlace(m1.word, m1.foundationIndex);
+      expect(engine.combo, 1);
+      final m2 = engine.suggestMove()!;
+      engine.tryPlace(m2.word, m2.foundationIndex);
+      expect(engine.combo, 2);
+      expect(engine.bestCombo, 2);
+    });
+
+    test('an illegal placement counts a mistake and resets combo', () {
+      final engine = SolitaireEngine(_buildLevel());
+      final m1 = engine.suggestMove()!;
+      engine.tryPlace(m1.word, m1.foundationIndex);
+      expect(engine.combo, 1);
+      // A buried card is an illegal move.
+      engine.tryPlace(engine.columns[1].first, 0);
+      expect(engine.mistakes, 1);
+      expect(engine.combo, 0);
+    });
+
+    test('a clean solve earns 3 stars', () {
+      final engine = SolitaireEngine(_buildLevel());
+      _greedySolve(engine);
+      expect(engine.isWon, isTrue);
+      expect(engine.mistakes, 0);
+      expect(engine.stars, 3);
+      expect(engine.streak, 4);
+    });
+
+    test('mistakes reduce the star rating', () {
+      final engine = SolitaireEngine(_buildLevel());
+      // Three illegal moves (buried cards) before solving.
+      for (var i = 0; i < 3; i++) {
+        engine.tryPlace(engine.columns[0].first, 0);
+      }
+      _greedySolve(engine);
+      expect(engine.mistakes, greaterThanOrEqualTo(3));
+      expect(engine.stars, 1);
+    });
+  });
+
   group('SolitaireEngine undo', () {
     test('undo reverts the last placement', () {
       final engine = SolitaireEngine(_buildLevel());
