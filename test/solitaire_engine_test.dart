@@ -29,6 +29,10 @@ Level _buildLevel(int categoryCount, {int number = 1}) {
 int _cardsOnBoard(SolitaireEngine e) =>
     e.columns.fold<int>(0, (a, c) => a + c.length) + e.stockCount;
 
+/// A word card for the first word of category [c] in [e]'s level.
+GameCard _wordOf(SolitaireEngine e, String categoryId) =>
+    GameCard.word(e.level.words.firstWhere((w) => w.categoryId == categoryId));
+
 /// Plays greedily (foundation moves via hints, drawing when stuck) to verify a
 /// deal is winnable through the public API.
 bool _greedyWin(SolitaireEngine e) {
@@ -46,11 +50,12 @@ bool _greedyWin(SolitaireEngine e) {
 
 void main() {
   group('deal', () {
-    test('foundations are pre-labeled and locked; all cards dealt', () {
+    test('foundations start empty, generic and unlabeled; all cards dealt', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
       expect(e.foundations.length, 4);
       for (final f in e.foundations) {
         expect(f.unlocked, isFalse);
+        expect(f.categoryId, isNull);
         expect(f.isComplete, isFalse);
       }
       // 4 categories × (1 category card + 4 words) = 20 cards.
@@ -76,77 +81,114 @@ void main() {
   });
 
   group('foundation locking', () {
-    test('a category card unlocks its matching foundation', () {
+    test('a category card locks an empty foundation to its category', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
-      // Early levels place category cards on the column tops.
+      // Early levels place a category card on a column top.
       final top = e.tableauTop(0)!;
       expect(top.isCategory, isTrue);
-      final fi = e.foundationIndexForCategory(top.categoryId);
-      expect(e.canPlaceOnFoundation(top, fi), isTrue);
+      // Any empty foundation accepts any (unclaimed) category card.
+      expect(e.canPlaceOnFoundation(top, 0), isTrue);
 
-      final result = e.playToFoundation(CardSource.tableau, 0, fi);
+      final result = e.playToFoundation(CardSource.tableau, 0, 0);
       expect(result.outcome, PlaceOutcome.unlocked);
-      expect(e.foundations[fi].unlocked, isTrue);
-      expect(e.foundations[fi].wordCount, 0);
+      expect(e.foundations[0].unlocked, isTrue);
+      expect(e.foundations[0].categoryId, top.categoryId);
+      expect(e.foundations[0].wordCount, 0);
+    });
+
+    test('the same category cannot be claimed by two foundations', () {
+      final e = SolitaireEngine(_buildLevel(4), random: Random(1));
+      final top = e.tableauTop(0)!;
+      e.playToFoundation(CardSource.tableau, 0, 0);
+      // A second (hypothetical) card of the same category is refused on any
+      // other empty foundation.
+      final dupe = GameCard.category(
+          e.level.categories.firstWhere((c) => c.id == top.categoryId));
+      expect(e.canPlaceOnFoundation(dupe, 1), isFalse);
     });
 
     test('a word card is rejected until its category is unlocked', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
-      final wordCard = e.stock.firstWhere((c) => !c.isCategory);
-      final fi = e.foundationIndexForCategory(wordCard.categoryId);
-      expect(e.canPlaceOnFoundation(wordCard, fi), isFalse);
+      final top = e.tableauTop(0)!; // a category card
+      final word = _wordOf(e, top.categoryId);
 
-      // Unlock that category by playing its category card from whichever
-      // column top holds it.
-      final col = List.generate(e.columnCount, (i) => i).firstWhere(
-          (i) =>
-              e.tableauTop(i)?.isCategory == true &&
-              e.tableauTop(i)!.categoryId == wordCard.categoryId,
-          orElse: () => -1);
-      if (col >= 0) {
-        e.playToFoundation(CardSource.tableau, col, fi);
-        expect(e.canPlaceOnFoundation(wordCard, fi), isTrue);
-      }
+      // Foundation 0 is empty: it only accepts a category card.
+      expect(e.canPlaceOnFoundation(word, 0), isFalse);
+
+      e.playToFoundation(CardSource.tableau, 0, 0); // unlock foundation 0
+      expect(e.canPlaceOnFoundation(word, 0), isTrue);
     });
 
-    test('a card cannot go on a foundation of another category', () {
+    test('an unlocked foundation rejects a different category word', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
       final top = e.tableauTop(0)!;
-      final fi = e.foundationIndexForCategory(top.categoryId);
-      final wrong = (fi + 1) % e.foundations.length;
-      final result = e.playToFoundation(CardSource.tableau, 0, wrong);
-      expect(result.outcome, PlaceOutcome.rejected);
-      expect(e.mistakes, 1);
-      expect(e.combo, 0);
+      e.playToFoundation(CardSource.tableau, 0, 0); // locks foundation 0
+
+      final otherCat =
+          e.level.categories.firstWhere((c) => c.id != top.categoryId).id;
+      final wrongWord = _wordOf(e, otherCat);
+      final matchWord = _wordOf(e, top.categoryId);
+      expect(e.canPlaceOnFoundation(wrongWord, 0), isFalse);
+      expect(e.canPlaceOnFoundation(matchWord, 0), isTrue);
     });
   });
 
-  group('empty column rule', () {
+  group('tableau rules', () {
     test('empty columns accept only category cards', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
       final catCard = GameCard.category(e.level.categories.first);
       final wordCard = GameCard.word(e.level.words.first);
 
-      // A non-empty column never accepts a drop.
-      expect(e.canPlaceOnColumn(catCard, 0), isFalse);
-
-      // Simulate an empty column.
       e.columns[0].clear();
       expect(e.canPlaceOnColumn(catCard, 0), isTrue);
       expect(e.canPlaceOnColumn(wordCard, 0), isFalse);
+    });
+
+    test('word cards stack only on a same-category top', () {
+      final e = SolitaireEngine(_buildLevel(4), random: Random(1));
+      final catA = e.level.categories[0].id;
+      final catB = e.level.categories[1].id;
+      final sameA = e.level.words.where((w) => w.categoryId == catA).toList();
+      final wA1 = GameCard.word(sameA[0]);
+      final wA2 = GameCard.word(sameA[1]);
+      final wB = _wordOf(e, catB);
+      final catCard = GameCard.category(e.level.categories[0]);
+
+      // Column 1 tops with a face-up word of category A.
+      e.columns[1]
+        ..clear()
+        ..add(TableauCard(wA1, faceUp: true));
+
+      expect(e.canPlaceOnColumn(wA2, 1), isTrue, reason: 'same category');
+      expect(e.canPlaceOnColumn(wB, 1), isFalse, reason: 'different category');
+      expect(e.canPlaceOnColumn(catCard, 1), isFalse,
+          reason: 'category cards never stack on a non-empty column');
+    });
+
+    test('a face-down top blocks stacking', () {
+      final e = SolitaireEngine(_buildLevel(4), random: Random(1));
+      final catA = e.level.categories[0].id;
+      final w = _wordOf(e, catA);
+      e.columns[2]
+        ..clear()
+        ..add(TableauCard(GameCard.word(e.level.words.last), faceUp: false));
+      expect(e.canPlaceOnColumn(w, 2), isFalse);
+    });
+
+    test('moveToColumn rejects dropping a column onto itself', () {
+      final e = SolitaireEngine(_buildLevel(4), random: Random(1));
+      final result = e.moveToColumn(CardSource.tableau, 0, 0);
+      expect(result.outcome, PlaceOutcome.rejected);
     });
   });
 
   group('reveal', () {
     test('removing a column top flips the card beneath', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
-      // Depth-2 columns on early levels: top category card over a face-down.
       final col = List.generate(e.columnCount, (i) => i)
           .firstWhere((i) => e.columns[i].length >= 2, orElse: () => -1);
       if (col >= 0) {
-        final top = e.tableauTop(col)!;
-        final fi = e.foundationIndexForCategory(top.categoryId);
-        e.playToFoundation(CardSource.tableau, col, fi);
+        e.playToFoundation(CardSource.tableau, col, 0);
         expect(e.columns[col].last.faceUp, isTrue);
       }
     });
@@ -190,12 +232,12 @@ void main() {
     test('undo reverts an unlock and re-locks the foundation', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
       final top = e.tableauTop(0)!;
-      final fi = e.foundationIndexForCategory(top.categoryId);
-      e.playToFoundation(CardSource.tableau, 0, fi);
-      expect(e.foundations[fi].unlocked, isTrue);
+      e.playToFoundation(CardSource.tableau, 0, 0);
+      expect(e.foundations[0].unlocked, isTrue);
 
       expect(e.undo(), isTrue);
-      expect(e.foundations[fi].unlocked, isFalse);
+      expect(e.foundations[0].unlocked, isFalse);
+      expect(e.foundations[0].categoryId, isNull);
       expect(e.tableauTop(0)!.id, top.id);
       expect(e.moves, 0);
     });

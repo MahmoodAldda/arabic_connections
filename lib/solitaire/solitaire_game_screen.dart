@@ -15,6 +15,7 @@ import '../widgets/decor_background.dart';
 import '../widgets/fireworks.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/pressable_button.dart';
+import 'difficulty.dart';
 import 'solitaire_engine.dart';
 
 /// Identifies a playable card and where it came from.
@@ -86,9 +87,13 @@ class SolitaireGameScreen extends StatefulWidget {
 class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     with TickerProviderStateMixin {
   final SoundService _sound = SoundService.instance;
+  final DifficultyDirector _director = const DifficultyDirector();
 
   late int _levelIndex;
   late SolitaireEngine _engine;
+
+  /// Hints consulted this round (free + paid) — feeds adaptive difficulty.
+  int _hintsUsed = 0;
 
   String? _hintedWordId;
   int? _flashFoundationIndex;
@@ -149,8 +154,13 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
 
   void _initLevel({bool showIntro = false}) {
     _cardKeys.clear();
+    final spec = _director.specFor(
+      widget.playerService.skill,
+      categoryCount: _level.categories.length,
+    );
     setState(() {
-      _engine = SolitaireEngine(_level);
+      _engine = SolitaireEngine(_level, spec: spec);
+      _hintsUsed = 0;
       _foundationKeys =
           List.generate(_engine.categoryCount, (_) => GlobalKey());
       _hintedWordId = null;
@@ -315,24 +325,32 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   Future<void> _hint() async {
     if (_isComplete) return;
     _sound.play(SoundFx.button);
-    const cost = GameEconomy.wordHintCost;
-    if (widget.playerService.coins < cost) {
-      _showSnack('لا تملك عملات كافية');
-      return;
-    }
     final move = _engine.suggestMove();
     if (move == null) {
       _showSnack('اسحب من مجموعة الأوراق');
       return;
     }
-    final spent = await widget.playerService.spendCoins(cost);
-    if (!spent || !mounted) return;
+    // Free hints first (their count shrinks as difficulty rises), then coins.
+    final isFree = _hintsUsed < _engine.spec.freeHints;
+    if (!isFree) {
+      const cost = GameEconomy.wordHintCost;
+      if (widget.playerService.coins < cost) {
+        _showSnack('لا تملك عملات كافية');
+        return;
+      }
+      final spent = await widget.playerService.spendCoins(cost);
+      if (!spent || !mounted) return;
+    }
     _haptic(HapticFeedback.mediumImpact);
     setState(() {
+      _hintsUsed++;
       _hintedWordId = move.card.id;
       _flashFoundationIndex = move.foundationIndex;
     });
-    _showSnack('جرّب هذه البطاقة');
+    final left = _engine.spec.freeHints - _hintsUsed;
+    _showSnack(isFree && left >= 0
+        ? (left > 0 ? 'تلميح مجاني — تبقّى $left' : 'جرّب هذه البطاقة')
+        : 'جرّب هذه البطاقة');
   }
 
   Future<void> _handleWin() async {
@@ -343,6 +361,21 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       _showFireworks = true;
     });
     _sound.play(SoundFx.victory);
+    // Fold this round's performance into the adaptive difficulty rating.
+    final result = RoundResult(
+      timeSec: _elapsed.inSeconds,
+      mistakes: _engine.mistakes,
+      hintsUsed: _hintsUsed,
+      bestCombo: _engine.bestCombo,
+      categoryCount: _engine.categoryCount,
+      won: true,
+    );
+    final newSkill = _director.updatedSkill(
+      widget.playerService.skill,
+      result,
+      _engine.spec,
+    );
+    await widget.playerService.saveSkill(newSkill);
     await widget.playerService.addCoins(widget.session.coinReward);
     _sound.play(SoundFx.coins);
     if (widget.session.isDaily) {
@@ -410,7 +443,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
           const Positioned.fill(
             child: DecorBackground(
               gradient: GameGradients.felt,
-              blobs: [Color(0xFF4CDB7E), Color(0xFF0C7A3D), Color(0xFF7BF0A8)],
+              blobs: [Color(0xFF1C7B47), Color(0xFF0A5730), Color(0xFF166A3E)],
               felt: true,
             ),
           ),
@@ -437,6 +470,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                       children: [
                         _FoundationsRow(
                           foundations: _engine.foundations,
+                          level: _level,
                           flashIndex: _flashFoundationIndex,
                           slotKeys: _foundationKeys,
                           canAccept: (ref, i) =>
@@ -466,6 +500,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                               dealAnimation: _dealController,
                               cardKeyFor: _cardKey,
                               canAcceptColumn: (ref, col) =>
+                                  !(ref.source == CardSource.tableau &&
+                                      ref.column == col) &&
                                   _engine.canPlaceOnColumn(ref.card, col),
                               onDropColumn: _onDropColumn,
                               onDragStarted: () => _sound.play(SoundFx.cardTap),
@@ -810,6 +846,7 @@ class _ComboPopup extends StatelessWidget {
 class _FoundationsRow extends StatelessWidget {
   const _FoundationsRow({
     required this.foundations,
+    required this.level,
     required this.flashIndex,
     required this.slotKeys,
     required this.canAccept,
@@ -817,6 +854,7 @@ class _FoundationsRow extends StatelessWidget {
   });
 
   final List<Foundation> foundations;
+  final Level level;
   final int? flashIndex;
   final List<GlobalKey> slotKeys;
   final bool Function(_CardRef ref, int index) canAccept;
@@ -824,10 +862,12 @@ class _FoundationsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Keep foundation labels legible when there are many categories.
     final gap = foundations.length >= 6 ? 5.0 : 8.0;
     return Row(
       children: List.generate(foundations.length, (i) {
+        final f = foundations[i];
+        final category =
+            f.unlocked ? level.categoryById(f.categoryId!) : null;
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
@@ -839,7 +879,8 @@ class _FoundationsRow extends StatelessWidget {
                 final valid = hasCandidate && canAccept(candidate.first!, i);
                 return _FoundationSlot(
                   key: slotKeys[i],
-                  foundation: foundations[i],
+                  foundation: f,
+                  category: category,
                   compact: foundations.length >= 6,
                   highlighted: valid || flashIndex == i,
                   invalidHover: hasCandidate && !valid,
@@ -857,12 +898,16 @@ class _FoundationSlot extends StatefulWidget {
   const _FoundationSlot({
     super.key,
     required this.foundation,
+    required this.category,
     required this.compact,
     required this.highlighted,
     required this.invalidHover,
   });
 
   final Foundation foundation;
+
+  /// The locked category once unlocked, otherwise null (empty foundation).
+  final Category? category;
   final bool compact;
   final bool highlighted;
   final bool invalidHover;
@@ -924,77 +969,109 @@ class _FoundationSlotState extends State<_FoundationSlot>
     );
   }
 
+  static const Color _gold = Color(0xFFC9A24B);
+
   Widget _buildSlot() {
-    final foundation = widget.foundation;
-    if (foundation.isComplete) return _completedSlot(foundation.category);
-    if (!foundation.unlocked) return _lockedSlot(foundation.category);
-    return _unlockedSlot(foundation);
+    final category = widget.category;
+    if (category != null && widget.foundation.isComplete) {
+      return _completedSlot(category);
+    }
+    if (category != null) {
+      return _unlockedSlot(category, widget.foundation.wordCount);
+    }
+    return _emptySlot();
   }
 
-  /// Pre-labeled but locked: shows the category, muted, awaiting its card.
-  Widget _lockedSlot(Category category) {
-    final borderColor = widget.invalidHover
+  /// Empty, unlabeled foundation — a restrained outlined slot awaiting a
+  /// category card. No category name is shown until one is placed.
+  Widget _emptySlot() {
+    final border = widget.invalidHover
         ? GameColors.red
-        : (widget.highlighted
-            ? Colors.white
-            : Colors.white.withValues(alpha: 0.4));
+        : (widget.highlighted ? _gold : Colors.white.withValues(alpha: 0.30));
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       height: _slotHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            category.color.withValues(alpha: widget.highlighted ? 0.55 : 0.24),
-            Colors.black.withValues(alpha: widget.highlighted ? 0.30 : 0.20),
-          ],
-        ),
+        color: Colors.black.withValues(alpha: widget.highlighted ? 0.24 : 0.16),
         borderRadius: BorderRadius.circular(GameRadii.md),
         border: Border.all(
-          color: borderColor,
-          width: widget.highlighted || widget.invalidHover ? 2.5 : 1.4,
+          color: border,
+          width: widget.highlighted || widget.invalidHover ? 2.4 : 1.4,
         ),
         boxShadow: widget.highlighted
-            ? GameShadows.glow(category.color, opacity: 0.5)
+            ? GameShadows.glow(_gold, opacity: 0.4)
             : null,
       ),
-      child: _slotBody(
-        category: category,
-        onColor: Colors.white,
-        badgeText: widget.compact ? null : 'بطاقة الفئة',
-        badgeIcon: Icons.lock_rounded,
-        dim: !widget.highlighted,
+      child: Center(
+        child: Icon(
+          Icons.style_outlined,
+          color: Colors.white.withValues(alpha: widget.highlighted ? 0.85 : 0.3),
+          size: 22,
+        ),
       ),
     );
   }
 
-  Widget _unlockedSlot(Foundation foundation) {
-    final category = foundation.category;
+  /// Unlocked foundation: an ivory, gold-edged pile head with the category name
+  /// and progress (n/4). Category colour appears only as a small accent.
+  Widget _unlockedSlot(Category category, int wordCount) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       height: _slotHeight,
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
-        gradient: GameGradients.fromColor(category.color),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFFDF6), Color(0xFFF2EBD8)],
+        ),
         borderRadius: BorderRadius.circular(GameRadii.md),
         border: Border.all(
           color: widget.invalidHover
               ? GameColors.red
-              : (widget.highlighted
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.5)),
-          width: widget.highlighted || widget.invalidHover ? 2.5 : 1,
+              : (widget.highlighted ? _gold : _gold.withValues(alpha: 0.7)),
+          width: widget.highlighted || widget.invalidHover ? 2.4 : 1.4,
         ),
-        boxShadow: GameShadows.card,
+        boxShadow: widget.highlighted
+            ? GameShadows.glow(_gold, opacity: 0.45)
+            : GameShadows.card,
       ),
-      child: _slotBody(
-        category: category,
-        onColor: Colors.white,
-        badgeText: '${foundation.wordCount}/$kWordsPerCategory',
-        badgeIcon: null,
-        dim: false,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: category.color.withValues(alpha: 0.16),
+            ),
+            child:
+                Icon(categoryIcon(category.id), size: 14, color: category.color),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            category.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: const Color(0xFF3A3320),
+              fontWeight: FontWeight.w800,
+              fontSize: widget.compact ? 10.5 : 12,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '$wordCount/$kWordsPerCategory',
+            style: TextStyle(
+              color: category.color,
+              fontWeight: FontWeight.w900,
+              fontSize: 10.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1026,80 +1103,27 @@ class _FoundationSlotState extends State<_FoundationSlot>
           ),
         );
       },
-      child: _slotBody(
-        category: category,
-        onColor: const Color(0xFF6E4A00),
-        badgeText: 'مكتمل ✓',
-        badgeIcon: Icons.emoji_events_rounded,
-        dim: false,
-      ),
-    );
-  }
-
-  Widget _slotBody({
-    required Category category,
-    required Color onColor,
-    required String? badgeText,
-    required IconData? badgeIcon,
-    required bool dim,
-  }) {
-    final content = Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(categoryIcon(category.id), color: onColor, size: 20),
-        const SizedBox(height: 3),
-        Text(
-          category.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: onColor,
-            fontWeight: FontWeight.w800,
-            fontSize: widget.compact ? 11 : 12.5,
-            height: 1.05,
-            shadows: onColor == Colors.white
-                ? const [
-                    Shadow(
-                        color: Color(0x55000000),
-                        blurRadius: 3,
-                        offset: Offset(0, 1)),
-                  ]
-                : null,
-          ),
-        ),
-        if (badgeText != null || badgeIcon != null) ...[
-          const SizedBox(height: 4),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(GameRadii.pill),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (badgeIcon != null) ...[
-                  Icon(badgeIcon, color: onColor, size: 11),
-                  if (badgeText != null) const SizedBox(width: 3),
-                ],
-                if (badgeText != null)
-                  Text(
-                    badgeText,
-                    style: TextStyle(
-                      color: onColor,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 10.5,
-                    ),
-                  ),
-              ],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.emoji_events_rounded,
+              color: Color(0xFF6E4A00), size: 20),
+          const SizedBox(height: 3),
+          Text(
+            category.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: const Color(0xFF6E4A00),
+              fontWeight: FontWeight.w900,
+              fontSize: widget.compact ? 11 : 12.5,
+              height: 1.05,
             ),
           ),
         ],
-      ],
+      ),
     );
-    return Opacity(opacity: dim ? 0.85 : 1, child: content);
   }
 }
 
@@ -1207,24 +1231,24 @@ class _Tableau extends StatelessWidget {
                 child: SizedBox(
                   width: cardWidth,
                   height: columnHeight,
-                  child: column.isEmpty
-                      ? DragTarget<_CardRef>(
-                          onWillAcceptWithDetails: (_) => true,
-                          onAcceptWithDetails: (d) => onDropColumn(d.data, i),
-                          builder: (context, candidate, rejected) {
-                            final valid = candidate.isNotEmpty &&
-                                canAcceptColumn(candidate.first!, i);
-                            return _EmptyColumnSlot(
-                              height: cardHeight,
-                              highlighted: valid,
-                              invalidHover:
-                                  candidate.isNotEmpty && !valid,
-                            );
-                          },
-                        )
-                      : Stack(
-                          clipBehavior: Clip.none,
-                          children: List.generate(column.length, (index) {
+                  child: DragTarget<_CardRef>(
+                    onWillAcceptWithDetails: (_) => true,
+                    onAcceptWithDetails: (d) => onDropColumn(d.data, i),
+                    builder: (context, candidate, rejected) {
+                      final valid = candidate.isNotEmpty &&
+                          canAcceptColumn(candidate.first!, i);
+                      final invalid = candidate.isNotEmpty && !valid;
+                      if (column.isEmpty) {
+                        return _EmptyColumnSlot(
+                          height: cardHeight,
+                          highlighted: valid,
+                          invalidHover: invalid,
+                        );
+                      }
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          ...List.generate(column.length, (index) {
                             final tc = column[index];
                             final isTop = index == column.length - 1;
                             return Positioned(
@@ -1234,7 +1258,8 @@ class _Tableau extends StatelessWidget {
                               right: 0,
                               child: _TableauCardWidget(
                                 card: tc.card,
-                                category: level.categoryById(tc.card.categoryId),
+                                category:
+                                    level.categoryById(tc.card.categoryId),
                                 faceUp: tc.faceUp,
                                 column: i,
                                 isTop: isTop,
@@ -1249,7 +1274,36 @@ class _Tableau extends StatelessWidget {
                               ),
                             );
                           }),
-                        ),
+                          if (valid || invalid)
+                            Positioned(
+                              top: (column.length - 1) * peek,
+                              left: 0,
+                              right: 0,
+                              child: IgnorePointer(
+                                child: Container(
+                                  height: cardHeight,
+                                  decoration: BoxDecoration(
+                                    borderRadius:
+                                        BorderRadius.circular(GameRadii.md),
+                                    border: Border.all(
+                                      color: valid
+                                          ? const Color(0xFFC9A24B)
+                                          : GameColors.red,
+                                      width: 2.6,
+                                    ),
+                                    boxShadow: valid
+                                        ? GameShadows.glow(
+                                            const Color(0xFFC9A24B),
+                                            opacity: 0.5)
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               );
             }),
@@ -1586,209 +1640,94 @@ class _CardFace extends StatelessWidget {
   final bool isHinted;
   final bool elevated;
 
+  // Premium, minimal palette — real-playing-card ink & gold, no bright fills.
+  static const Color _ink = Color(0xFF23262E);
+  static const Color _gold = Color(0xFFC9A24B);
+
+  BorderRadius get _radius => BorderRadius.circular(GameRadii.md);
+
   @override
   Widget build(BuildContext context) {
-    if (card.isCategory) return _categoryFace();
-    return _wordFace();
+    return card.isCategory ? _categoryFace() : _wordFace();
   }
 
-  /// A distinctive premium card that unlocks a foundation: rich category color,
-  /// gold frame, a category icon and a crown ribbon.
-  Widget _categoryFace() {
-    final base = category.color;
-    final shadows = isHinted
-        ? GameShadows.glow(GameColors.gold, opacity: 0.6)
-        : (elevated
-            ? const [
-                BoxShadow(
-                    color: Color(0x590B1B2B),
-                    blurRadius: 28,
-                    offset: Offset(0, 18),
-                    spreadRadius: -2),
-              ]
-            : GameShadows.glow(base, opacity: 0.35));
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(GameRadii.md),
-        boxShadow: shadows,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(GameRadii.md),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.lerp(base, Colors.white, 0.28)!,
-                base,
-                Color.lerp(base, Colors.black, 0.28)!,
-              ],
-              stops: const [0.0, 0.5, 1.0],
-            ),
-            border: Border.all(color: const Color(0xFFE9C25A), width: 2),
-            borderRadius: BorderRadius.circular(GameRadii.md),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: SizedBox(
-                  height: 18,
-                  child: DecoratedBox(
-                    decoration:
-                        BoxDecoration(gradient: GameGradients.cardSheen),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.workspace_premium_rounded,
-                        color: Color(0xFFFFF1C2), size: 14),
-                    const SizedBox(height: 2),
-                    Icon(categoryIcon(category.id),
-                        color: Colors.white, size: 26),
-                    const SizedBox(height: 4),
-                    Text(
-                      category.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
-                        height: 1.05,
-                        shadows: [
-                          Shadow(
-                              color: Color(0x66000000),
-                              blurRadius: 4,
-                              offset: Offset(0, 1)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _wordFace() {
-    Gradient gradient;
-    Color borderColor;
-    Color textColor;
-
-    if (isHinted) {
-      gradient = GameGradients.orange;
-      borderColor = Colors.white.withValues(alpha: 0.7);
-      textColor = Colors.white;
-    } else {
-      gradient = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFFFFFFFF), Color(0xFFF3F6FA), Color(0xFFE7EDF4)],
-        stops: [0.0, 0.55, 1.0],
-      );
-      borderColor = Colors.white;
-      textColor = GameColors.textPrimary;
-    }
-
-    final List<BoxShadow> shadows;
-    if (isHinted) {
-      shadows = GameShadows.glow(GameColors.orange, opacity: 0.55);
-    } else if (elevated) {
-      shadows = const [
+  List<BoxShadow> _resting({double lift = 1}) {
+    if (elevated) {
+      return const [
         BoxShadow(
             color: Color(0x4D0B1B2B),
-            blurRadius: 28,
-            offset: Offset(0, 18),
+            blurRadius: 26,
+            offset: Offset(0, 16),
             spreadRadius: -2),
         BoxShadow(
-            color: Color(0x1A0B1B2B), blurRadius: 6, offset: Offset(0, 2)),
-      ];
-    } else {
-      shadows = const [
-        BoxShadow(
-            color: Color(0x2E0B1B2B),
-            blurRadius: 14,
-            offset: Offset(0, 8),
-            spreadRadius: -3),
-        BoxShadow(
-            color: Color(0x140B1B2B), blurRadius: 3, offset: Offset(0, 1)),
+            color: Color(0x1A0B1B2B), blurRadius: 5, offset: Offset(0, 2)),
       ];
     }
+    return [
+      BoxShadow(
+          color: const Color(0x2A0B1B2B),
+          blurRadius: 10 * lift,
+          offset: Offset(0, 6 * lift),
+          spreadRadius: -3),
+      const BoxShadow(
+          color: Color(0x120B1B2B), blurRadius: 2, offset: Offset(0, 1)),
+    ];
+  }
+
+  /// A small suit-style corner mark (category icon in the category colour).
+  Widget _pip(Color color, {bool flip = false}) {
+    final child = Icon(categoryIcon(category.id), size: 11, color: color);
+    return flip ? Transform.rotate(angle: math.pi, child: child) : child;
+  }
+
+  /// Normal word card: elegant ivory playing card with category suit pips.
+  Widget _wordFace() {
+    final gradient = isHinted
+        ? GameGradients.orange
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFFFFF), Color(0xFFF7F4EC)],
+          );
+    final textColor = isHinted ? Colors.white : _ink;
+    final borderColor =
+        isHinted ? Colors.white.withValues(alpha: 0.7) : const Color(0xFFE2DECF);
+    final shadows = isHinted
+        ? GameShadows.glow(GameColors.orange, opacity: 0.55)
+        : _resting();
 
     return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(GameRadii.md),
-        boxShadow: shadows,
-      ),
+      decoration: BoxDecoration(borderRadius: _radius, boxShadow: shadows),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(GameRadii.md),
+        borderRadius: _radius,
         child: Container(
           decoration: BoxDecoration(
             gradient: gradient,
             border: Border.all(color: borderColor, width: 1),
-            borderRadius: BorderRadius.circular(GameRadii.md),
+            borderRadius: _radius,
           ),
           child: Stack(
             children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.55),
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.45],
-                    ),
-                  ),
-                ),
-              ),
               const Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: SizedBox(
-                  height: 18,
+                  height: 14,
                   child: DecoratedBox(
                     decoration: BoxDecoration(gradient: GameGradients.cardSheen),
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  height: 10,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.06),
-                        Colors.black.withValues(alpha: 0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              if (!isHinted) ...[
+                Positioned(top: 4, left: 5, child: _pip(category.color)),
+                Positioned(
+                    bottom: 4,
+                    right: 5,
+                    child: _pip(category.color, flip: true)),
+              ],
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                 child: Center(
                   child: Text(
                     card.label,
@@ -1803,6 +1742,84 @@ class _CardFace extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Category card: the same restrained ivory stock, distinguished only by a
+  /// gold double border, a small gold medallion and its category name.
+  Widget _categoryFace() {
+    final shadows = isHinted
+        ? GameShadows.glow(GameColors.gold, opacity: 0.6)
+        : (elevated ? _resting() : GameShadows.glow(_gold, opacity: 0.26));
+    return DecoratedBox(
+      decoration: BoxDecoration(borderRadius: _radius, boxShadow: shadows),
+      child: ClipRRect(
+        borderRadius: _radius,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFFFFDF6), Color(0xFFF4EDDB)],
+            ),
+            border: Border.all(color: _gold, width: 2),
+            borderRadius: _radius,
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Inner gold hairline frame.
+              Padding(
+                padding: const EdgeInsets.all(3),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(GameRadii.md - 4),
+                    border:
+                        Border.all(color: _gold.withValues(alpha: 0.35)),
+                  ),
+                ),
+              ),
+              Positioned(
+                  top: 4, left: 6, child: _pip(_gold)),
+              Positioned(
+                  bottom: 4, right: 6, child: _pip(_gold, flip: true)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: GameGradients.gold,
+                        boxShadow:
+                            GameShadows.glow(GameColors.gold, opacity: 0.4),
+                      ),
+                      child: Icon(categoryIcon(category.id),
+                          size: 17, color: const Color(0xFF6E4A00)),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      category.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF6E4A00),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11.5,
+                        height: 1.05,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

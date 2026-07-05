@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../models.dart';
+import 'difficulty.dart';
 
 /// Words that make up one category (also the number a foundation needs after
 /// its category card is placed).
@@ -47,15 +48,15 @@ class TableauCard {
 /// Where a played card came from.
 enum CardSource { tableau, waste }
 
-/// A pre-labeled category foundation. Locked until its category card is placed,
-/// after which it accepts word cards of the same category.
+/// A generic foundation pile. Starts empty and unlabeled; the first card placed
+/// must be a **category card**, which locks the pile to that category forever.
+/// It then accepts only word cards of the same category.
 class Foundation {
-  Foundation(this.category);
-
-  final Category category;
-
   /// The category card (index 0, once unlocked) followed by placed word cards.
   final List<GameCard> pile = [];
+
+  /// Null until a category card is placed, then the locked category id.
+  String? get categoryId => pile.isEmpty ? null : pile.first.categoryId;
 
   bool get unlocked => pile.isNotEmpty;
   int get wordCount => pile.isEmpty ? 0 : pile.length - 1;
@@ -158,17 +159,25 @@ class _Move {
 ///
 /// Every dealt level is verified **greedily solvable** before use.
 class SolitaireEngine {
-  SolitaireEngine(this.level, {Random? random}) : _rng = random ?? Random() {
+  SolitaireEngine(this.level, {Random? random, RoundSpec? spec})
+      : _rng = random ?? Random() {
+    _spec = spec ??
+        RoundSpec.forLevelNumber(level.number,
+            categoryCount: level.categories.length);
     _needed = {
       for (final c in level.categories)
         c.id: level.words.where((w) => w.categoryId == c.id).length,
     };
-    foundations = [for (final c in level.categories) Foundation(c)];
+    foundations = [for (final _ in level.categories) Foundation()];
     deal();
   }
 
   final Level level;
   final Random _rng;
+
+  /// The difficulty parameters for the current deal.
+  late final RoundSpec _spec;
+  RoundSpec get spec => _spec;
 
   late final Map<String, int> _needed;
   late final List<Foundation> foundations;
@@ -218,8 +227,9 @@ class SolitaireEngine {
     return column.last.faceUp ? column.last.card : null;
   }
 
+  /// Index of the foundation already locked to [categoryId], or -1.
   int foundationIndexForCategory(String categoryId) =>
-      foundations.indexWhere((f) => f.category.id == categoryId);
+      foundations.indexWhere((f) => f.categoryId == categoryId);
 
   // --- Dealing --------------------------------------------------------------
 
@@ -234,21 +244,20 @@ class SolitaireEngine {
     return deck;
   }
 
-  int _tier() {
-    if (level.number <= 2) return 0;
-    if (level.number <= 4) return 1;
-    return 2;
-  }
-
   /// Deals a fresh, guaranteed-solvable layout and resets all state.
+  ///
+  /// The board shape is driven by [spec]: deeper columns and buried category
+  /// cards make a round harder. Solvability is still verified before use.
   void deal() {
-    final tier = _tier();
     final columnsCount = categoryCount; // one column per category
-    final depth = tier == 0 ? 2 : 3;
+    // At least one card per category stays in the stock so drawing matters.
+    final depth = _spec.columnDepth.clamp(2, kWordsPerCategory);
 
     for (var attempt = 0; attempt < 400; attempt++) {
       final deck = _buildDeck()..shuffle(_rng);
-      if (tier == 0) _biasCategoryCardsAccessible(deck, columnsCount, depth);
+      if (!_spec.buryCategoryCards) {
+        _biasCategoryCardsAccessible(deck, columnsCount, depth);
+      }
       final layout = _arrange(deck, columnsCount, depth);
       if (_greedySolvable(layout.$1, layout.$2)) {
         _adopt(layout.$1, layout.$2);
@@ -339,14 +348,26 @@ class SolitaireEngine {
       return false;
     }
     final f = foundations[foundationIndex];
-    if (f.category.id != card.categoryId) return false;
-    if (card.isCategory) return !f.unlocked;
-    return f.unlocked && f.wordCount < kWordsPerCategory;
+    if (!f.unlocked) {
+      // Empty foundation: only a category card whose category isn't already
+      // claimed by another foundation.
+      return card.isCategory &&
+          foundationIndexForCategory(card.categoryId) == -1;
+    }
+    return !card.isCategory &&
+        card.categoryId == f.categoryId &&
+        f.wordCount < kWordsPerCategory;
   }
 
+  /// Empty columns accept only category cards; non-empty columns accept a word
+  /// card whose category matches the (face-up) top card — a real tableau build.
   bool canPlaceOnColumn(GameCard card, int columnIndex) {
     if (columnIndex < 0 || columnIndex >= columns.length) return false;
-    return columns[columnIndex].isEmpty && card.isCategory;
+    final column = columns[columnIndex];
+    if (column.isEmpty) return card.isCategory;
+    final top = column.last;
+    if (!top.faceUp) return false;
+    return !card.isCategory && card.categoryId == top.card.categoryId;
   }
 
   GameCard? _sourceTop(CardSource source, int col) =>
@@ -399,9 +420,12 @@ class SolitaireEngine {
         foundationIndex: foundationIndex, revealedCard: revealed);
   }
 
-  /// Moves a category card from [source]/[fromColumn] onto empty column [toCol].
-  /// Returns false if the move is illegal.
+  /// Moves the top card of [source]/[fromColumn] onto column [toCol]: a category
+  /// card onto an empty column, or a word onto a same-category top.
   PlaceResult moveToColumn(CardSource source, int fromColumn, int toCol) {
+    if (source == CardSource.tableau && fromColumn == toCol) {
+      return const PlaceResult(PlaceOutcome.rejected);
+    }
     final card = _sourceTop(source, fromColumn);
     if (card == null || !canPlaceOnColumn(card, toCol)) {
       return const PlaceResult(PlaceOutcome.rejected);
@@ -475,7 +499,11 @@ class SolitaireEngine {
     HintMove? best;
     void consider(CardSource source, int col, GameCard? card) {
       if (card == null) return;
-      final fi = foundationIndexForCategory(card.categoryId);
+      // Word cards target their locked foundation; category cards target the
+      // first empty foundation.
+      final fi = card.isCategory
+          ? foundations.indexWhere((f) => !f.unlocked)
+          : foundationIndexForCategory(card.categoryId);
       if (fi < 0 || !canPlaceOnFoundation(card, fi)) return;
       final move =
           HintMove(source: source, columnIndex: col, card: card, foundationIndex: fi);
