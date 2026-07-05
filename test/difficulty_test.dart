@@ -197,4 +197,120 @@ void main() {
       expect(e.isWon, isTrue);
     });
   });
+
+  group('computeReward', () {
+    const spec = RoundSpec(
+      columnDepth: 3,
+      buryCategoryCards: true,
+      freeHints: 1,
+      parTimeSec: 100,
+      difficulty: 0.5,
+    );
+
+    test('base scales up with difficulty', () {
+      final easy = director.computeReward(
+        _result(timeSec: 999, mistakes: 3, hintsUsed: 3),
+        const RoundSpec(
+          columnDepth: 2,
+          buryCategoryCards: false,
+          freeHints: 2,
+          parTimeSec: 100,
+          difficulty: 0.0,
+        ),
+        baseReward: 20,
+        streak: 0,
+      );
+      final hard = director.computeReward(
+        _result(timeSec: 999, mistakes: 3, hintsUsed: 3),
+        const RoundSpec(
+          columnDepth: 4,
+          buryCategoryCards: true,
+          freeHints: 0,
+          parTimeSec: 100,
+          difficulty: 1.0,
+        ),
+        baseReward: 20,
+        streak: 0,
+      );
+      expect(easy.base, 20);
+      expect(hard.base, 40);
+      expect(hard.total, greaterThan(easy.total));
+    });
+
+    test('perfect play earns star, no-hint and speed bonuses', () {
+      final r = director.computeReward(
+        _result(timeSec: 50, mistakes: 0, hintsUsed: 0),
+        spec,
+        baseReward: 20,
+        streak: 0,
+      );
+      expect(r.starMultiplier, 1.5);
+      expect(r.noHintBonus, 10);
+      expect(r.speedBonus, 15);
+      // base 30, *1.5 = 45, +10 +15 = 70.
+      expect(r.total, 70);
+    });
+
+    test('slow, hinted, mistaken play drops multipliers and bonuses', () {
+      final r = director.computeReward(
+        _result(timeSec: 500, mistakes: 4, hintsUsed: 2),
+        spec,
+        baseReward: 20,
+        streak: 0,
+      );
+      expect(r.starMultiplier, 1.0);
+      expect(r.noHintBonus, 0);
+      expect(r.speedBonus, 0);
+      expect(r.hasStreakBonus, isFalse);
+      expect(r.total, 30);
+    });
+
+    test('streak multiplier grows and is capped at 2x', () {
+      final s3 = director.computeReward(
+        _result(timeSec: 999, mistakes: 3, hintsUsed: 3),
+        spec,
+        baseReward: 20,
+        streak: 3,
+      );
+      final s99 = director.computeReward(
+        _result(timeSec: 999, mistakes: 3, hintsUsed: 3),
+        spec,
+        baseReward: 20,
+        streak: 99,
+      );
+      expect(s3.streakMultiplier, closeTo(1.3, 1e-9));
+      expect(s99.streakMultiplier, 2.0);
+    });
+  });
+
+  group('isCleanRound', () {
+    test('perfect win is clean', () {
+      expect(director.isCleanRound(_result(mistakes: 0, hintsUsed: 0)), isTrue);
+    });
+    test('mistakes or hints break cleanliness', () {
+      expect(director.isCleanRound(_result(mistakes: 1)), isFalse);
+      expect(director.isCleanRound(_result(hintsUsed: 1)), isFalse);
+    });
+    test('a loss is never clean', () {
+      expect(director.isCleanRound(_result(won: false)), isFalse);
+    });
+  });
+
+  group('PlayerRank.fromSkill', () {
+    test('maps skill bands to named ranks', () {
+      expect(PlayerRank.fromSkill(0).name, 'مبتدئ');
+      expect(PlayerRank.fromSkill(19).index, 0);
+      expect(PlayerRank.fromSkill(20).index, 1);
+      expect(PlayerRank.fromSkill(55).index, 2);
+      expect(PlayerRank.fromSkill(100).index, PlayerRank.count - 1);
+    });
+
+    test('progressAt is 0..1 within the rank band', () {
+      final rank = PlayerRank.fromSkill(50);
+      expect(rank.progressAt(40), 0.0);
+      expect(rank.progressAt(50), closeTo(0.5, 1e-9));
+      expect(rank.progressAt(60), 1.0);
+      expect(rank.progressAt(1000), 1.0);
+    });
+  });
 }

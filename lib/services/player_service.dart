@@ -10,10 +10,12 @@ class PlayerService extends ChangeNotifier {
   static const _coinsKey = 'player_coins';
   static const _dailyCompletedKey = 'daily_completed_date';
   static const _skillKey = 'player_skill';
+  static const _streakKey = 'player_streak';
 
   int _coins = GameEconomy.startingCoins;
   String? _dailyCompletedDate;
   double _skill = DifficultyDirector.startingSkill;
+  int _cleanStreak = 0;
   bool _loaded = false;
 
   int get coins => _coins;
@@ -22,11 +24,15 @@ class PlayerService extends ChangeNotifier {
   /// Rolling difficulty rating in `[0, 100]`; higher deals harder boards.
   double get skill => _skill;
 
+  /// Consecutive perfect (no mistakes, no hints) round wins.
+  int get cleanStreak => _cleanStreak;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     _coins = prefs.getInt(_coinsKey) ?? GameEconomy.startingCoins;
     _dailyCompletedDate = prefs.getString(_dailyCompletedKey);
     _skill = prefs.getDouble(_skillKey) ?? DifficultyDirector.startingSkill;
+    _cleanStreak = prefs.getInt(_streakKey) ?? 0;
     _loaded = true;
     notifyListeners();
   }
@@ -36,6 +42,14 @@ class PlayerService extends ChangeNotifier {
     _skill = value.clamp(DifficultyDirector.minSkill, DifficultyDirector.maxSkill);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_skillKey, _skill);
+    notifyListeners();
+  }
+
+  /// Persists the current clean-win streak.
+  Future<void> saveCleanStreak(int value) async {
+    _cleanStreak = value < 0 ? 0 : value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_streakKey, _cleanStreak);
     notifyListeners();
   }
 

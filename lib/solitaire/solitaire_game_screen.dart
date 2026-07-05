@@ -95,6 +95,13 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   /// Hints consulted this round (free + paid) — feeds adaptive difficulty.
   int _hintsUsed = 0;
 
+  // Outcome of the just-won round, surfaced on the victory sheet.
+  RewardBreakdown? _lastReward;
+  int _lastStreak = 0;
+  String _rankName = '';
+  double _rankProgress = 0;
+  bool _rankedUp = false;
+
   String? _hintedWordId;
   int? _flashFoundationIndex;
   bool _showConfetti = false;
@@ -370,13 +377,32 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       categoryCount: _engine.categoryCount,
       won: true,
     );
-    final newSkill = _director.updatedSkill(
-      widget.playerService.skill,
+    final oldSkill = widget.playerService.skill;
+    final newSkill = _director.updatedSkill(oldSkill, result, _engine.spec);
+
+    // A perfect round extends the clean-win streak; any blemish resets it.
+    final isClean = _director.isCleanRound(result);
+    final newStreak = isClean ? widget.playerService.cleanStreak + 1 : 0;
+
+    // Performance-scaled reward (harder boards + stars + streak + bonuses).
+    final reward = _director.computeReward(
       result,
       _engine.spec,
+      baseReward: widget.session.coinReward,
+      streak: newStreak,
     );
+
+    final oldRank = PlayerRank.fromSkill(oldSkill);
+    final newRank = PlayerRank.fromSkill(newSkill);
+    _lastReward = reward;
+    _lastStreak = newStreak;
+    _rankName = newRank.name;
+    _rankProgress = newRank.progressAt(newSkill);
+    _rankedUp = newRank.index > oldRank.index;
+
     await widget.playerService.saveSkill(newSkill);
-    await widget.playerService.addCoins(widget.session.coinReward);
+    await widget.playerService.saveCleanStreak(newStreak);
+    await widget.playerService.addCoins(reward.total);
     _sound.play(SoundFx.coins);
     if (widget.session.isDaily) {
       await widget.playerService.markDailyCompleted();
@@ -398,7 +424,12 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       builder: (context) => VictorySheet(
         stars: _engine.stars,
         levelNumber: _level.number,
-        coinsEarned: widget.session.coinReward,
+        reward: _lastReward,
+        coinsEarned: _lastReward?.total ?? widget.session.coinReward,
+        streak: _lastStreak,
+        rankName: _rankName,
+        rankProgress: _rankProgress,
+        rankedUp: _rankedUp,
         moves: _engine.moves,
         mistakes: _engine.mistakes,
         bestCombo: _engine.bestCombo,
@@ -436,6 +467,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
 
   @override
   Widget build(BuildContext context) {
+    final rank = PlayerRank.fromSkill(widget.playerService.skill);
     return Scaffold(
       backgroundColor: const Color(0xFF116B39),
       body: Stack(
@@ -460,6 +492,9 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                   total: _engine.categoryCount,
                   coins: widget.playerService.coins,
                   isDaily: widget.session.isDaily,
+                  rankName: rank.name,
+                  rankProgress: rank.progressAt(widget.playerService.skill),
+                  cleanStreak: widget.playerService.cleanStreak,
                   coinKey: _coinKey,
                   onBack: () => Navigator.of(context).maybePop(),
                 ),
@@ -566,6 +601,9 @@ class _SolitaireHeader extends StatelessWidget {
     required this.total,
     required this.coins,
     required this.isDaily,
+    required this.rankName,
+    required this.rankProgress,
+    required this.cleanStreak,
     required this.onBack,
     required this.coinKey,
   });
@@ -579,6 +617,9 @@ class _SolitaireHeader extends StatelessWidget {
   final int total;
   final int coins;
   final bool isDaily;
+  final String rankName;
+  final double rankProgress;
+  final int cleanStreak;
   final VoidCallback onBack;
   final GlobalKey coinKey;
 
@@ -642,6 +683,12 @@ class _SolitaireHeader extends StatelessWidget {
                           ],
                         ),
                       ),
+                      if (!isDaily)
+                        _HeaderRankChip(
+                          rankName: rankName,
+                          progress: rankProgress,
+                          cleanStreak: cleanStreak,
+                        ),
                     ],
                   ),
                 ),
@@ -670,6 +717,80 @@ class _SolitaireHeader extends StatelessWidget {
             _LevelProgressBar(value: total == 0 ? 0 : completed / total),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Compact rank badge with a slim journey bar and clean-streak flame, shown
+/// under the level title in the header.
+class _HeaderRankChip extends StatelessWidget {
+  const _HeaderRankChip({
+    required this.rankName,
+    required this.progress,
+    required this.cleanStreak,
+  });
+
+  final String rankName;
+  final double progress;
+  final int cleanStreak;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.military_tech_rounded,
+              color: GameColors.gold, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            rankName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 60,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Container(
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    borderRadius: BorderRadius.circular(GameRadii.pill),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      width: constraints.maxWidth * progress.clamp(0.0, 1.0),
+                      decoration: BoxDecoration(
+                        gradient: GameGradients.gold,
+                        borderRadius: BorderRadius.circular(GameRadii.pill),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (cleanStreak > 1) ...[
+            const SizedBox(width: 8),
+            Text(
+              '🔥$cleanStreak',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2243,6 +2364,11 @@ class VictorySheet extends StatefulWidget {
     required this.onReplay,
     required this.onNext,
     required this.onHome,
+    this.reward,
+    this.streak = 0,
+    this.rankName = '',
+    this.rankProgress = 0,
+    this.rankedUp = false,
   });
 
   final int stars;
@@ -2257,6 +2383,11 @@ class VictorySheet extends StatefulWidget {
   final VoidCallback onReplay;
   final VoidCallback onNext;
   final VoidCallback onHome;
+  final RewardBreakdown? reward;
+  final int streak;
+  final String rankName;
+  final double rankProgress;
+  final bool rankedUp;
 
   @override
   State<VictorySheet> createState() => _VictorySheetState();
@@ -2333,6 +2464,18 @@ class _VictorySheetState extends State<VictorySheet>
               ],
             ),
           ),
+          if (widget.reward != null) ...[
+            const SizedBox(height: 8),
+            _RewardBreakdownRow(reward: widget.reward!, streak: widget.streak),
+          ],
+          if (widget.rankName.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _RankProgress(
+              rankName: widget.rankName,
+              progress: widget.rankProgress,
+              rankedUp: widget.rankedUp,
+            ),
+          ],
           const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -2394,6 +2537,115 @@ class _VictorySheetState extends State<VictorySheet>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Compact "base ×star ×streak (+bonuses)" line under the total coins pill.
+class _RewardBreakdownRow extends StatelessWidget {
+  const _RewardBreakdownRow({required this.reward, required this.streak});
+
+  final RewardBreakdown reward;
+  final int streak;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[
+      '${reward.base}',
+      '×${reward.starMultiplier.toStringAsFixed(1)}★',
+      if (reward.hasStreakBonus)
+        '×${reward.streakMultiplier.toStringAsFixed(1)} 🔥$streak',
+      if (reward.noHintBonus > 0) '+${reward.noHintBonus} بلا تلميح',
+      if (reward.speedBonus > 0) '+${reward.speedBonus} سرعة',
+    ];
+    return Text(
+      parts.join('  ·  '),
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: GameColors.textSecondary,
+        fontWeight: FontWeight.w700,
+        fontSize: 12,
+      ),
+    );
+  }
+}
+
+/// A rank badge with a progress bar toward the next rank (plus a rank-up flare).
+class _RankProgress extends StatelessWidget {
+  const _RankProgress({
+    required this.rankName,
+    required this.progress,
+    required this.rankedUp,
+  });
+
+  final String rankName;
+  final double progress;
+  final bool rankedUp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.military_tech_rounded,
+                color: GameColors.gold, size: 20),
+            const SizedBox(width: 6),
+            Text(
+              rankName,
+              style: GameTextStyles.title.copyWith(
+                fontSize: 16,
+                color: GameColors.textPrimary,
+              ),
+            ),
+            if (rankedUp) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  gradient: GameGradients.gold,
+                  borderRadius: BorderRadius.circular(GameRadii.pill),
+                ),
+                child: const Text(
+                  'ترقية!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return Container(
+              height: 10,
+              decoration: BoxDecoration(
+                color: GameColors.border.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(GameRadii.pill),
+              ),
+              child: Stack(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 600),
+                    curve: Curves.easeOutCubic,
+                    width: constraints.maxWidth * progress.clamp(0.0, 1.0),
+                    decoration: BoxDecoration(
+                      gradient: GameGradients.gold,
+                      borderRadius: BorderRadius.circular(GameRadii.pill),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

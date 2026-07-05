@@ -156,4 +156,92 @@ class DifficultyDirector {
     final next = skill + rate * (target - skill);
     return next.clamp(minSkill, maxSkill);
   }
+
+  /// A round is "clean" (extends a streak) when it is won with no mistakes and
+  /// no hints — a perfect solve.
+  bool isCleanRound(RoundResult r) =>
+      r.won && r.mistakes == 0 && r.hintsUsed == 0;
+
+  /// Computes the coin reward for a won round. Harder boards pay a larger base;
+  /// stars, clean-win streaks, no-hint play and beating par all add on top.
+  RewardBreakdown computeReward(
+    RoundResult r,
+    RoundSpec spec, {
+    required int baseReward,
+    required int streak,
+  }) {
+    final base = (baseReward * (1 + spec.difficulty)).round();
+    final star = r.mistakes == 0 ? 1.5 : (r.mistakes <= 2 ? 1.2 : 1.0);
+    final streakMult = (1 + 0.1 * streak).clamp(1.0, 2.0).toDouble();
+    final noHintBonus = r.hintsUsed == 0 ? 10 : 0;
+    final speedBonus =
+        (r.timeSec > 0 && r.timeSec <= spec.parTimeSec) ? 15 : 0;
+    final total =
+        (base * star * streakMult).round() + noHintBonus + speedBonus;
+    return RewardBreakdown(
+      base: base,
+      starMultiplier: star,
+      streakMultiplier: streakMult,
+      noHintBonus: noHintBonus,
+      speedBonus: speedBonus,
+      total: total,
+    );
+  }
+}
+
+/// A coin reward broken into its contributing parts (for display on the
+/// victory screen).
+class RewardBreakdown {
+  const RewardBreakdown({
+    required this.base,
+    required this.starMultiplier,
+    required this.streakMultiplier,
+    required this.noHintBonus,
+    required this.speedBonus,
+    required this.total,
+  });
+
+  final int base;
+  final double starMultiplier;
+  final double streakMultiplier;
+  final int noHintBonus;
+  final int speedBonus;
+  final int total;
+
+  bool get hasStreakBonus => streakMultiplier > 1.0;
+}
+
+/// A named progression rank derived from the adaptive skill rating. Replaces
+/// "Level N" as the felt sense of advancement.
+class PlayerRank {
+  const PlayerRank({
+    required this.index,
+    required this.name,
+    required this.min,
+    required this.max,
+  });
+
+  final int index;
+  final String name;
+  final double min;
+  final double max;
+
+  /// Progress within this rank at [skill], in `[0, 1]`.
+  double progressAt(double skill) =>
+      ((skill - min) / (max - min)).clamp(0.0, 1.0);
+
+  static const List<PlayerRank> ranks = [
+    PlayerRank(index: 0, name: 'مبتدئ', min: 0, max: 20),
+    PlayerRank(index: 1, name: 'هاوٍ', min: 20, max: 40),
+    PlayerRank(index: 2, name: 'ماهر', min: 40, max: 60),
+    PlayerRank(index: 3, name: 'خبير', min: 60, max: 80),
+    PlayerRank(index: 4, name: 'أسطورة', min: 80, max: 100.0001),
+  ];
+
+  static int get count => ranks.length;
+
+  static PlayerRank fromSkill(double skill) {
+    final s = skill.clamp(DifficultyDirector.minSkill, DifficultyDirector.maxSkill);
+    return ranks.firstWhere((r) => s < r.max, orElse: () => ranks.last);
+  }
 }
