@@ -19,11 +19,50 @@ import 'solitaire_engine.dart';
 
 /// Identifies a playable card and where it came from.
 class _CardRef {
-  const _CardRef(this.source, this.column, this.word);
+  const _CardRef(this.source, this.column, this.card);
 
   final CardSource source;
   final int column; // tableau column, or -1 for the waste
-  final WordItem word;
+  final GameCard card;
+}
+
+/// Maps a category id to a representative icon for its category card.
+IconData categoryIcon(String id) {
+  const map = <String, IconData>{
+    'fruits': Icons.apple_rounded,
+    'vegetables': Icons.eco_rounded,
+    'colors': Icons.palette_rounded,
+    'animals': Icons.pets_rounded,
+    'numbers': Icons.tag_rounded,
+    'family': Icons.family_restroom_rounded,
+    'weather': Icons.wb_sunny_rounded,
+    'food': Icons.restaurant_rounded,
+    'body': Icons.accessibility_new_rounded,
+    'school': Icons.school_rounded,
+    'transport': Icons.directions_car_rounded,
+    'jobs': Icons.work_rounded,
+    'countries': Icons.public_rounded,
+    'sports': Icons.sports_soccer_rounded,
+    'music': Icons.music_note_rounded,
+    'games': Icons.videogame_asset_rounded,
+    'movies': Icons.movie_rounded,
+    'seasons': Icons.ac_unit_rounded,
+    'trees': Icons.park_rounded,
+    'flowers': Icons.local_florist_rounded,
+    'rivers': Icons.water_rounded,
+    'birds': Icons.flutter_dash_rounded,
+    'clothes': Icons.checkroom_rounded,
+    'metals': Icons.hardware_rounded,
+    'planets': Icons.brightness_3_rounded,
+    'senses': Icons.visibility_rounded,
+    'instruments': Icons.piano_rounded,
+    'drinks': Icons.local_cafe_rounded,
+    'insects': Icons.bug_report_rounded,
+    'tools': Icons.build_rounded,
+    'space': Icons.rocket_launch_rounded,
+    'oceans': Icons.sailing_rounded,
+  };
+  return map[id] ?? Icons.category_rounded;
 }
 
 /// Premium Klondike-style word-solitaire board: a face-down stock you draw into
@@ -53,7 +92,6 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
 
   String? _hintedWordId;
   int? _flashFoundationIndex;
-  String? _flyingWordId;
   bool _showConfetti = false;
   bool _showFireworks = false;
   bool _isComplete = false;
@@ -69,8 +107,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   late AnimationController _dealController;
   int _boardGeneration = 0;
 
-  final List<GlobalKey> _foundationKeys =
-      List.generate(kTableauColumns, (_) => GlobalKey());
+  List<GlobalKey> _foundationKeys = const [];
   final Map<String, GlobalKey> _cardKeys = {};
   final GlobalKey _coinKey = GlobalKey();
   final GlobalKey _wasteKey = GlobalKey();
@@ -114,9 +151,10 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     _cardKeys.clear();
     setState(() {
       _engine = SolitaireEngine(_level);
+      _foundationKeys =
+          List.generate(_engine.categoryCount, (_) => GlobalKey());
       _hintedWordId = null;
       _flashFoundationIndex = null;
-      _flyingWordId = null;
       _showConfetti = false;
       _showFireworks = false;
       _isComplete = false;
@@ -192,51 +230,12 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
 
   // --- Placement ------------------------------------------------------------
 
-  int _findTarget(WordItem word) {
-    for (var i = 0; i < _engine.foundations.length; i++) {
-      if (!_engine.foundations[i].isEmpty && _engine.canPlace(word, i)) return i;
-    }
-    for (var i = 0; i < _engine.foundations.length; i++) {
-      if (_engine.canPlace(word, i)) return i;
-    }
-    return -1;
-  }
-
-  /// Tap-to-place: the card flies (and flips) from its source to a foundation.
-  void _tapPlace(_CardRef ref) {
-    if (_isComplete || _flyingWordId != null) return;
-    final target = _findTarget(ref.word);
-    if (target == -1) {
-      _sound.play(SoundFx.wrong);
-      _rejectFeedback();
-      return;
-    }
-    final srcKey =
-        ref.source == CardSource.waste ? _wasteKey : _cardKey(ref.word.id);
-    final src = _rectFor(srcKey);
-    final dst = _rectFor(_foundationKeys[target]);
-    if (src == null || dst == null) {
-      _commitPlace(ref, target);
-      return;
-    }
-    _sound.play(SoundFx.cardTap);
-    setState(() => _flyingWordId = ref.word.id);
-    _spawnFlyingCard(ref.word, src, dst, () {
-      if (!mounted) return;
-      setState(() => _flyingWordId = null);
-      _commitPlace(ref, target);
-    });
-  }
-
-  void _onDragAccept(_CardRef ref, int foundationIndex) {
+  /// A card was dropped on foundation [foundationIndex]. All placement is manual
+  /// (drag only) — there is no auto-complete.
+  void _onDropFoundation(_CardRef ref, int foundationIndex) {
     if (_isComplete) return;
-    _commitPlace(ref, foundationIndex);
-  }
-
-  void _commitPlace(_CardRef ref, int foundationIndex) {
-    final result = ref.source == CardSource.waste
-        ? _engine.playFromWaste(foundationIndex)
-        : _engine.playFromTableau(ref.column, foundationIndex);
+    final result =
+        _engine.playToFoundation(ref.source, ref.column, foundationIndex);
     if (!result.accepted) {
       _sound.play(SoundFx.wrong);
       _rejectFeedback();
@@ -260,8 +259,23 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     if (_engine.isWon) _handleWin();
   }
 
+  /// A category card was dropped on empty tableau column [toColumn].
+  void _onDropColumn(_CardRef ref, int toColumn) {
+    if (_isComplete) return;
+    final result = _engine.moveToColumn(ref.source, ref.column, toColumn);
+    if (!result.accepted) {
+      _sound.play(SoundFx.wrong);
+      _rejectFeedback();
+      setState(() {});
+      return;
+    }
+    _sound.play(SoundFx.cardMove);
+    _haptic(HapticFeedback.selectionClick);
+    setState(() => _hintedWordId = null);
+  }
+
   void _drawStock() {
-    if (_isComplete || _flyingWordId != null) return;
+    if (_isComplete) return;
     if (_engine.drawFromStock()) {
       _sound.play(SoundFx.cardTap);
       _haptic(HapticFeedback.selectionClick);
@@ -275,32 +289,6 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     Future<void>.delayed(const Duration(milliseconds: 1000), () {
       if (mounted) setState(() => _comboText = null);
     });
-  }
-
-  Rect? _rectFor(GlobalKey key) {
-    final ctx = key.currentContext;
-    if (ctx == null) return null;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return null;
-    return box.localToGlobal(Offset.zero) & box.size;
-  }
-
-  void _spawnFlyingCard(
-      WordItem word, Rect src, Rect dst, VoidCallback onArrive) {
-    final overlay = Overlay.of(context);
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (_) => _FlyingCard(
-        word: word,
-        src: src,
-        dst: dst,
-        onDone: () {
-          entry.remove();
-          onArrive();
-        },
-      ),
-    );
-    overlay.insert(entry);
   }
 
   void _rejectFeedback() {
@@ -341,7 +329,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     if (!spent || !mounted) return;
     _haptic(HapticFeedback.mediumImpact);
     setState(() {
-      _hintedWordId = move.word.id;
+      _hintedWordId = move.card.id;
       _flashFoundationIndex = move.foundationIndex;
     });
     _showSnack('جرّب هذه البطاقة');
@@ -436,7 +424,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                   bestCombo: _engine.bestCombo,
                   elapsed: _elapsed,
                   completed: _engine.completedCount,
-                  total: kTableauColumns,
+                  total: _engine.categoryCount,
                   coins: widget.playerService.coins,
                   isDaily: widget.session.isDaily,
                   coinKey: _coinKey,
@@ -449,11 +437,11 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                       children: [
                         _FoundationsRow(
                           foundations: _engine.foundations,
-                          level: _level,
                           flashIndex: _flashFoundationIndex,
                           slotKeys: _foundationKeys,
-                          canAccept: (ref, i) => _engine.canPlace(ref.word, i),
-                          onAccept: _onDragAccept,
+                          canAccept: (ref, i) =>
+                              _engine.canPlaceOnFoundation(ref.card, i),
+                          onAccept: _onDropFoundation,
                         ),
                         const SizedBox(height: 8),
                         Expanded(
@@ -473,11 +461,13 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                             child: _Tableau(
                               key: ValueKey('board-$_boardGeneration'),
                               columns: _engine.columns,
+                              level: _level,
                               hintedWordId: _hintedWordId,
-                              flyingWordId: _flyingWordId,
                               dealAnimation: _dealController,
                               cardKeyFor: _cardKey,
-                              onTapTop: _tapPlace,
+                              canAcceptColumn: (ref, col) =>
+                                  _engine.canPlaceOnColumn(ref.card, col),
+                              onDropColumn: _onDropColumn,
                               onDragStarted: () => _sound.play(SoundFx.cardTap),
                               enabled: !_isComplete,
                             ),
@@ -487,13 +477,12 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                         _StockWasteBar(
                           stockCount: _engine.stockCount,
                           wasteTop: _engine.wasteTop,
+                          level: _level,
                           wasteKey: _wasteKey,
-                          flyingWordId: _flyingWordId,
                           hintedWordId: _hintedWordId,
                           canUndo: _engine.canUndo,
                           enabled: !_isComplete,
                           onDrawStock: _drawStock,
-                          onTapWaste: _tapPlace,
                           onWasteDragStarted: () =>
                               _sound.play(SoundFx.cardTap),
                           onHint: _hint,
@@ -821,7 +810,6 @@ class _ComboPopup extends StatelessWidget {
 class _FoundationsRow extends StatelessWidget {
   const _FoundationsRow({
     required this.foundations,
-    required this.level,
     required this.flashIndex,
     required this.slotKeys,
     required this.canAccept,
@@ -829,7 +817,6 @@ class _FoundationsRow extends StatelessWidget {
   });
 
   final List<Foundation> foundations;
-  final Level level;
   final int? flashIndex;
   final List<GlobalKey> slotKeys;
   final bool Function(_CardRef ref, int index) canAccept;
@@ -837,11 +824,13 @@ class _FoundationsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keep foundation labels legible when there are many categories.
+    final gap = foundations.length >= 6 ? 5.0 : 8.0;
     return Row(
       children: List.generate(foundations.length, (i) {
         return Expanded(
           child: Padding(
-            padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
+            padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
             child: DragTarget<_CardRef>(
               onWillAcceptWithDetails: (_) => true,
               onAcceptWithDetails: (details) => onAccept(details.data, i),
@@ -851,7 +840,7 @@ class _FoundationsRow extends StatelessWidget {
                 return _FoundationSlot(
                   key: slotKeys[i],
                   foundation: foundations[i],
-                  level: level,
+                  compact: foundations.length >= 6,
                   highlighted: valid || flashIndex == i,
                   invalidHover: hasCandidate && !valid,
                 );
@@ -868,13 +857,13 @@ class _FoundationSlot extends StatefulWidget {
   const _FoundationSlot({
     super.key,
     required this.foundation,
-    required this.level,
+    required this.compact,
     required this.highlighted,
     required this.invalidHover,
   });
 
   final Foundation foundation;
-  final Level level;
+  final bool compact;
   final bool highlighted;
   final bool invalidHover;
 
@@ -887,7 +876,7 @@ class _FoundationSlotState extends State<_FoundationSlot>
   late final AnimationController _bounce;
   late final AnimationController _shimmer;
 
-  static const double _slotHeight = 82;
+  double get _slotHeight => widget.compact ? 74 : 84;
 
   @override
   void initState() {
@@ -906,7 +895,7 @@ class _FoundationSlotState extends State<_FoundationSlot>
   @override
   void didUpdateWidget(_FoundationSlot oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.foundation.cards.length > oldWidget.foundation.cards.length) {
+    if (widget.foundation.pile.length > oldWidget.foundation.pile.length) {
       _bounce.forward(from: 0);
     }
     if (widget.foundation.isComplete && !_shimmer.isAnimating) {
@@ -937,64 +926,56 @@ class _FoundationSlotState extends State<_FoundationSlot>
 
   Widget _buildSlot() {
     final foundation = widget.foundation;
-    final category = foundation.isEmpty
-        ? null
-        : widget.level.categoryById(foundation.categoryId!);
-
-    if (category == null) return _emptySlot();
-    if (foundation.isComplete) return _completedSlot(category);
-    return _inProgressSlot(category, foundation);
+    if (foundation.isComplete) return _completedSlot(foundation.category);
+    if (!foundation.unlocked) return _lockedSlot(foundation.category);
+    return _unlockedSlot(foundation);
   }
 
-  Widget _emptySlot() {
+  /// Pre-labeled but locked: shows the category, muted, awaiting its card.
+  Widget _lockedSlot(Category category) {
     final borderColor = widget.invalidHover
         ? GameColors.red
-        : Colors.white.withValues(alpha: widget.highlighted ? 0.95 : 0.45);
+        : (widget.highlighted
+            ? Colors.white
+            : Colors.white.withValues(alpha: 0.4));
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       height: _slotHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: widget.highlighted ? 0.30 : 0.13),
-            Colors.white.withValues(alpha: widget.highlighted ? 0.16 : 0.05),
+            category.color.withValues(alpha: widget.highlighted ? 0.55 : 0.24),
+            Colors.black.withValues(alpha: widget.highlighted ? 0.30 : 0.20),
           ],
         ),
         borderRadius: BorderRadius.circular(GameRadii.md),
         border: Border.all(
           color: borderColor,
-          width: widget.highlighted || widget.invalidHover ? 2.5 : 1.5,
+          width: widget.highlighted || widget.invalidHover ? 2.5 : 1.4,
         ),
         boxShadow: widget.highlighted
-            ? GameShadows.glow(Colors.white, opacity: 0.4)
+            ? GameShadows.glow(category.color, opacity: 0.5)
             : null,
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.add_rounded,
-              color: Colors.white.withValues(alpha: 0.85), size: 22),
-          const SizedBox(height: 2),
-          Text(
-            'ضع هنا',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.85),
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-            ),
-          ),
-        ],
+      child: _slotBody(
+        category: category,
+        onColor: Colors.white,
+        badgeText: widget.compact ? null : 'بطاقة الفئة',
+        badgeIcon: Icons.lock_rounded,
+        dim: !widget.highlighted,
       ),
     );
   }
 
-  Widget _inProgressSlot(Category category, Foundation foundation) {
+  Widget _unlockedSlot(Foundation foundation) {
+    final category = foundation.category;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       height: _slotHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
         gradient: GameGradients.fromColor(category.color),
         borderRadius: BorderRadius.circular(GameRadii.md),
@@ -1003,15 +984,17 @@ class _FoundationSlotState extends State<_FoundationSlot>
               ? GameColors.red
               : (widget.highlighted
                   ? Colors.white
-                  : Colors.white.withValues(alpha: 0.4)),
+                  : Colors.white.withValues(alpha: 0.5)),
           width: widget.highlighted || widget.invalidHover ? 2.5 : 1,
         ),
         boxShadow: GameShadows.card,
       ),
-      child: _slotContent(
-        name: category.name,
-        badge: '${foundation.cards.length}/$kCardsPerCategory',
-        gold: false,
+      child: _slotBody(
+        category: category,
+        onColor: Colors.white,
+        badgeText: '${foundation.wordCount}/$kWordsPerCategory',
+        badgeIcon: null,
+        dim: false,
       ),
     );
   }
@@ -1023,7 +1006,7 @@ class _FoundationSlotState extends State<_FoundationSlot>
         final glow = 0.42 + math.sin(_shimmer.value * math.pi * 2) * 0.22;
         return Container(
           height: _slotHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
           decoration: BoxDecoration(
             gradient: GameGradients.gold,
             borderRadius: BorderRadius.circular(GameRadii.md),
@@ -1043,61 +1026,80 @@ class _FoundationSlotState extends State<_FoundationSlot>
           ),
         );
       },
-      child: _slotContent(name: category.name, badge: 'مكتمل', gold: true),
+      child: _slotBody(
+        category: category,
+        onColor: const Color(0xFF6E4A00),
+        badgeText: 'مكتمل ✓',
+        badgeIcon: Icons.emoji_events_rounded,
+        dim: false,
+      ),
     );
   }
 
-  Widget _slotContent({
-    required String name,
-    required String badge,
-    required bool gold,
+  Widget _slotBody({
+    required Category category,
+    required Color onColor,
+    required String? badgeText,
+    required IconData? badgeIcon,
+    required bool dim,
   }) {
-    final onColor = gold ? const Color(0xFF6E4A00) : Colors.white;
-    return Column(
+    final content = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (gold) ...[
-          Icon(Icons.emoji_events_rounded, color: onColor, size: 18),
-          const SizedBox(height: 2),
-        ],
+        Icon(categoryIcon(category.id), color: onColor, size: 20),
+        const SizedBox(height: 3),
         Text(
-          name,
-          maxLines: 2,
+          category.name,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
           style: TextStyle(
             color: onColor,
             fontWeight: FontWeight.w800,
-            fontSize: 12.5,
-            height: 1.1,
-            shadows: gold
-                ? null
-                : const [
+            fontSize: widget.compact ? 11 : 12.5,
+            height: 1.05,
+            shadows: onColor == Colors.white
+                ? const [
                     Shadow(
                         color: Color(0x55000000),
                         blurRadius: 3,
                         offset: Offset(0, 1)),
-                  ],
+                  ]
+                : null,
           ),
         ),
-        const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: gold ? 0.55 : 0.3),
-            borderRadius: BorderRadius.circular(GameRadii.pill),
-          ),
-          child: Text(
-            gold ? 'مكتمل ✓' : badge,
-            style: TextStyle(
-              color: onColor,
-              fontWeight: FontWeight.w800,
-              fontSize: 11,
+        if (badgeText != null || badgeIcon != null) ...[
+          const SizedBox(height: 4),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.28),
+              borderRadius: BorderRadius.circular(GameRadii.pill),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (badgeIcon != null) ...[
+                  Icon(badgeIcon, color: onColor, size: 11),
+                  if (badgeText != null) const SizedBox(width: 3),
+                ],
+                if (badgeText != null)
+                  Text(
+                    badgeText,
+                    style: TextStyle(
+                      color: onColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 10.5,
+                    ),
+                  ),
+              ],
             ),
           ),
-        ),
+        ],
       ],
     );
+    return Opacity(opacity: dim ? 0.85 : 1, child: content);
   }
 }
 
@@ -1143,39 +1145,47 @@ class _Tableau extends StatelessWidget {
   const _Tableau({
     super.key,
     required this.columns,
+    required this.level,
     required this.hintedWordId,
-    required this.flyingWordId,
     required this.dealAnimation,
     required this.cardKeyFor,
-    required this.onTapTop,
+    required this.canAcceptColumn,
+    required this.onDropColumn,
     required this.onDragStarted,
     required this.enabled,
   });
 
   final List<List<TableauCard>> columns;
+  final Level level;
   final String? hintedWordId;
-  final String? flyingWordId;
   final Animation<double> dealAnimation;
   final GlobalKey Function(String id) cardKeyFor;
-  final ValueChanged<_CardRef> onTapTop;
+  final bool Function(_CardRef ref, int column) canAcceptColumn;
+  final void Function(_CardRef ref, int column) onDropColumn;
   final VoidCallback onDragStarted;
   final bool enabled;
-
-  static const int _maxStack = 4; // longest column in the 1-2-3-4 deal
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 8.0;
+        final count = columns.length;
+        final gap = count >= 6 ? 5.0 : 8.0;
         final maxH = constraints.maxHeight;
         final cardWidth =
-            (constraints.maxWidth - gap * (columns.length - 1)) / columns.length;
+            (constraints.maxWidth - gap * (count - 1)) / count;
+
+        final maxStack = columns
+            .map((c) => c.length)
+            .fold<int>(1, (a, b) => math.max(a, b))
+            .clamp(1, 6);
 
         var cardHeight = cardWidth * 1.42;
-        var peek = (maxH - cardHeight) / (_maxStack - 1);
-        peek = peek.clamp(cardHeight * 0.22, cardHeight * 0.40);
-        var columnHeight = cardHeight + peek * (_maxStack - 1);
+        var peek = maxStack <= 1
+            ? 0.0
+            : ((maxH - cardHeight) / (maxStack - 1))
+                .clamp(cardHeight * 0.24, cardHeight * 0.42);
+        var columnHeight = cardHeight + peek * (maxStack - 1);
         if (columnHeight > maxH) {
           final scale = maxH / columnHeight;
           cardHeight *= scale;
@@ -1188,7 +1198,7 @@ class _Tableau extends StatelessWidget {
           alignment: Alignment.topCenter,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: List.generate(columns.length, (i) {
+            children: List.generate(count, (i) {
               final baseIndex = globalIndex;
               globalIndex += columns[i].length;
               final column = columns[i];
@@ -1198,30 +1208,42 @@ class _Tableau extends StatelessWidget {
                   width: cardWidth,
                   height: columnHeight,
                   child: column.isEmpty
-                      ? _EmptyColumnSlot(height: cardHeight)
+                      ? DragTarget<_CardRef>(
+                          onWillAcceptWithDetails: (_) => true,
+                          onAcceptWithDetails: (d) => onDropColumn(d.data, i),
+                          builder: (context, candidate, rejected) {
+                            final valid = candidate.isNotEmpty &&
+                                canAcceptColumn(candidate.first!, i);
+                            return _EmptyColumnSlot(
+                              height: cardHeight,
+                              highlighted: valid,
+                              invalidHover:
+                                  candidate.isNotEmpty && !valid,
+                            );
+                          },
+                        )
                       : Stack(
                           clipBehavior: Clip.none,
                           children: List.generate(column.length, (index) {
-                            final card = column[index];
+                            final tc = column[index];
                             final isTop = index == column.length - 1;
                             return Positioned(
-                              key: ValueKey(card.word.id),
+                              key: ValueKey(tc.card.id),
                               top: index * peek,
                               left: 0,
                               right: 0,
                               child: _TableauCardWidget(
-                                card: card,
-                                faceUp: card.faceUp,
+                                card: tc.card,
+                                category: level.categoryById(tc.card.categoryId),
+                                faceUp: tc.faceUp,
                                 column: i,
                                 isTop: isTop,
-                                boxKey: isTop ? cardKeyFor(card.word.id) : null,
+                                boxKey: isTop ? cardKeyFor(tc.card.id) : null,
                                 width: cardWidth,
                                 height: cardHeight,
-                                isHinted: card.word.id == hintedWordId,
-                                isFlying: card.word.id == flyingWordId,
+                                isHinted: tc.card.id == hintedWordId,
                                 entranceIndex: baseIndex + index,
                                 dealAnimation: dealAnimation,
-                                onTapTop: onTapTop,
                                 onDragStarted: onDragStarted,
                                 enabled: enabled,
                               ),
@@ -1239,26 +1261,41 @@ class _Tableau extends StatelessWidget {
 }
 
 class _EmptyColumnSlot extends StatelessWidget {
-  const _EmptyColumnSlot({required this.height});
+  const _EmptyColumnSlot({
+    required this.height,
+    this.highlighted = false,
+    this.invalidHover = false,
+  });
 
   final double height;
+  final bool highlighted;
+  final bool invalidHover;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final border = invalidHover
+        ? GameColors.red
+        : (highlighted
+            ? const Color(0xFFE9C25A)
+            : Colors.white.withValues(alpha: 0.16));
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
       height: height,
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.14),
+        color: Colors.black.withValues(alpha: highlighted ? 0.24 : 0.14),
         borderRadius: BorderRadius.circular(GameRadii.md),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.16),
-          width: 1.4,
+          color: border,
+          width: highlighted || invalidHover ? 2.4 : 1.4,
         ),
+        boxShadow: highlighted
+            ? GameShadows.glow(const Color(0xFFE9C25A), opacity: 0.4)
+            : null,
       ),
       child: Center(
         child: Icon(
-          Icons.check_circle_outline_rounded,
-          color: Colors.white.withValues(alpha: 0.3),
+          Icons.style_rounded,
+          color: Colors.white.withValues(alpha: highlighted ? 0.8 : 0.3),
           size: 22,
         ),
       ),
@@ -1269,6 +1306,7 @@ class _EmptyColumnSlot extends StatelessWidget {
 class _TableauCardWidget extends StatefulWidget {
   const _TableauCardWidget({
     required this.card,
+    required this.category,
     required this.faceUp,
     required this.column,
     required this.isTop,
@@ -1276,15 +1314,14 @@ class _TableauCardWidget extends StatefulWidget {
     required this.width,
     required this.height,
     required this.isHinted,
-    required this.isFlying,
     required this.entranceIndex,
     required this.dealAnimation,
-    required this.onTapTop,
     required this.onDragStarted,
     required this.enabled,
   });
 
-  final TableauCard card;
+  final GameCard card;
+  final Category category;
 
   /// Captured by value so a reveal (false → true) can be detected in
   /// [State.didUpdateWidget] even though the underlying [TableauCard] is mutated
@@ -1296,10 +1333,8 @@ class _TableauCardWidget extends StatefulWidget {
   final double width;
   final double height;
   final bool isHinted;
-  final bool isFlying;
   final int entranceIndex;
   final Animation<double> dealAnimation;
-  final ValueChanged<_CardRef> onTapTop;
   final VoidCallback onDragStarted;
   final bool enabled;
 
@@ -1348,28 +1383,26 @@ class _TableauCardWidgetState extends State<_TableauCardWidget>
       ),
     );
 
-    if (widget.isFlying) {
-      return Opacity(opacity: 0, child: sized);
-    }
-
     final interactive = widget.isTop && widget.faceUp && widget.enabled;
 
     Widget content = sized;
     if (interactive) {
-      final ref =
-          _CardRef(CardSource.tableau, widget.column, widget.card.word);
+      final ref = _CardRef(CardSource.tableau, widget.column, widget.card);
       content = Draggable<_CardRef>(
         data: ref,
         dragAnchorStrategy: childDragAnchorStrategy,
-        onDragStarted: widget.onDragStarted,
+        onDragStarted: () {
+          setState(() => _pressed = false);
+          widget.onDragStarted();
+        },
         feedback: Material(
           color: Colors.transparent,
           child: SizedBox(
             width: widget.width,
             height: widget.height,
             child: _CardFace(
-              word: widget.card.word,
-              isFront: true,
+              card: widget.card,
+              category: widget.category,
               isHinted: widget.isHinted,
               elevated: true,
             ),
@@ -1378,10 +1411,7 @@ class _TableauCardWidgetState extends State<_TableauCardWidget>
         childWhenDragging: Opacity(opacity: 0.28, child: sized),
         child: GestureDetector(
           onTapDown: (_) => setState(() => _pressed = true),
-          onTapUp: (_) {
-            setState(() => _pressed = false);
-            widget.onTapTop(ref);
-          },
+          onTapUp: (_) => setState(() => _pressed = false),
           onTapCancel: () => setState(() => _pressed = false),
           child: KeyedSubtree(key: widget.boxKey, child: sized),
         ),
@@ -1419,8 +1449,8 @@ class _TableauCardWidgetState extends State<_TableauCardWidget>
     if (!flipping) {
       return widget.faceUp
           ? _CardFace(
-              word: widget.card.word,
-              isFront: true,
+              card: widget.card,
+              category: widget.category,
               isHinted: widget.isHinted,
             )
           : const _CardBack();
@@ -1436,8 +1466,8 @@ class _TableauCardWidgetState extends State<_TableauCardWidget>
       child: showBack
           ? const _CardBack()
           : _CardFace(
-              word: widget.card.word,
-              isFront: true,
+              card: widget.card,
+              category: widget.category,
               isHinted: widget.isHinted,
             ),
     );
@@ -1545,19 +1575,115 @@ class _CardBackPainter extends CustomPainter {
 
 class _CardFace extends StatelessWidget {
   const _CardFace({
-    required this.word,
-    required this.isFront,
+    required this.card,
+    required this.category,
     required this.isHinted,
     this.elevated = false,
   });
 
-  final WordItem word;
-  final bool isFront;
+  final GameCard card;
+  final Category category;
   final bool isHinted;
   final bool elevated;
 
   @override
   Widget build(BuildContext context) {
+    if (card.isCategory) return _categoryFace();
+    return _wordFace();
+  }
+
+  /// A distinctive premium card that unlocks a foundation: rich category color,
+  /// gold frame, a category icon and a crown ribbon.
+  Widget _categoryFace() {
+    final base = category.color;
+    final shadows = isHinted
+        ? GameShadows.glow(GameColors.gold, opacity: 0.6)
+        : (elevated
+            ? const [
+                BoxShadow(
+                    color: Color(0x590B1B2B),
+                    blurRadius: 28,
+                    offset: Offset(0, 18),
+                    spreadRadius: -2),
+              ]
+            : GameShadows.glow(base, opacity: 0.35));
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        boxShadow: shadows,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.lerp(base, Colors.white, 0.28)!,
+                base,
+                Color.lerp(base, Colors.black, 0.28)!,
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+            border: Border.all(color: const Color(0xFFE9C25A), width: 2),
+            borderRadius: BorderRadius.circular(GameRadii.md),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SizedBox(
+                  height: 18,
+                  child: DecoratedBox(
+                    decoration:
+                        BoxDecoration(gradient: GameGradients.cardSheen),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.workspace_premium_rounded,
+                        color: Color(0xFFFFF1C2), size: 14),
+                    const SizedBox(height: 2),
+                    Icon(categoryIcon(category.id),
+                        color: Colors.white, size: 26),
+                    const SizedBox(height: 4),
+                    Text(
+                      category.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                        height: 1.05,
+                        shadows: [
+                          Shadow(
+                              color: Color(0x66000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 1)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _wordFace() {
     Gradient gradient;
     Color borderColor;
     Color textColor;
@@ -1665,7 +1791,7 @@ class _CardFace extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
                 child: Center(
                   child: Text(
-                    word.text,
+                    card.label,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -1694,13 +1820,12 @@ class _StockWasteBar extends StatelessWidget {
   const _StockWasteBar({
     required this.stockCount,
     required this.wasteTop,
+    required this.level,
     required this.wasteKey,
-    required this.flyingWordId,
     required this.hintedWordId,
     required this.canUndo,
     required this.enabled,
     required this.onDrawStock,
-    required this.onTapWaste,
     required this.onWasteDragStarted,
     required this.onHint,
     required this.onUndo,
@@ -1708,14 +1833,13 @@ class _StockWasteBar extends StatelessWidget {
   });
 
   final int stockCount;
-  final WordItem? wasteTop;
+  final GameCard? wasteTop;
+  final Level level;
   final GlobalKey wasteKey;
-  final String? flyingWordId;
   final String? hintedWordId;
   final bool canUndo;
   final bool enabled;
   final VoidCallback onDrawStock;
-  final ValueChanged<_CardRef> onTapWaste;
   final VoidCallback onWasteDragStarted;
   final VoidCallback onHint;
   final VoidCallback onUndo;
@@ -1743,13 +1867,14 @@ class _StockWasteBar extends StatelessWidget {
               _WastePile(
                 key: ValueKey('waste-${wasteTop?.id ?? 'empty'}'),
                 boxKey: wasteKey,
-                word: wasteTop,
+                card: wasteTop,
+                category: wasteTop == null
+                    ? null
+                    : level.categoryById(wasteTop!.categoryId),
                 width: cardW,
                 height: cardH,
                 isHinted: wasteTop != null && wasteTop!.id == hintedWordId,
-                isFlying: wasteTop != null && wasteTop!.id == flyingWordId,
                 enabled: enabled,
-                onTap: onTapWaste,
                 onDragStarted: onWasteDragStarted,
               ),
               const Spacer(),
@@ -1887,24 +2012,22 @@ class _WastePile extends StatefulWidget {
   const _WastePile({
     super.key,
     required this.boxKey,
-    required this.word,
+    required this.card,
+    required this.category,
     required this.width,
     required this.height,
     required this.isHinted,
-    required this.isFlying,
     required this.enabled,
-    required this.onTap,
     required this.onDragStarted,
   });
 
   final GlobalKey boxKey;
-  final WordItem? word;
+  final GameCard? card;
+  final Category? category;
   final double width;
   final double height;
   final bool isHinted;
-  final bool isFlying;
   final bool enabled;
-  final ValueChanged<_CardRef> onTap;
   final VoidCallback onDragStarted;
 
   @override
@@ -1923,7 +2046,7 @@ class _WastePileState extends State<_WastePile>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    if (widget.word != null) _in.forward(from: 0);
+    if (widget.card != null) _in.forward(from: 0);
   }
 
   @override
@@ -1934,37 +2057,36 @@ class _WastePileState extends State<_WastePile>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.word == null) {
+    if (widget.card == null) {
       return _emptySlot();
     }
-    final word = widget.word!;
+    final card = widget.card!;
     final face = SizedBox(
       width: widget.width,
       height: widget.height,
-      child: _CardFace(word: word, isFront: true, isHinted: widget.isHinted),
+      child: _CardFace(
+        card: card,
+        category: widget.category!,
+        isHinted: widget.isHinted,
+      ),
     );
 
-    if (widget.isFlying) {
-      return SizedBox(
-        width: widget.width,
-        height: widget.height,
-        child: Opacity(opacity: 0, child: face),
-      );
-    }
-
-    final ref = _CardRef(CardSource.waste, -1, word);
+    final ref = _CardRef(CardSource.waste, -1, card);
     Widget child = Draggable<_CardRef>(
       data: ref,
       dragAnchorStrategy: childDragAnchorStrategy,
-      onDragStarted: widget.onDragStarted,
+      onDragStarted: () {
+        setState(() => _pressed = false);
+        widget.onDragStarted();
+      },
       feedback: Material(
         color: Colors.transparent,
         child: SizedBox(
           width: widget.width,
           height: widget.height,
           child: _CardFace(
-            word: word,
-            isFront: true,
+            card: card,
+            category: widget.category!,
             isHinted: widget.isHinted,
             elevated: true,
           ),
@@ -1973,10 +2095,7 @@ class _WastePileState extends State<_WastePile>
       childWhenDragging: Opacity(opacity: 0.28, child: face),
       child: GestureDetector(
         onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) {
-          setState(() => _pressed = false);
-          if (widget.enabled) widget.onTap(ref);
-        },
+        onTapUp: (_) => setState(() => _pressed = false),
         onTapCancel: () => setState(() => _pressed = false),
         child: KeyedSubtree(key: widget.boxKey, child: face),
       ),
@@ -2086,77 +2205,6 @@ class _RoundActionState extends State<_RoundAction> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Flying card overlay (tap-to-place)
-// ---------------------------------------------------------------------------
-
-class _FlyingCard extends StatefulWidget {
-  const _FlyingCard({
-    required this.word,
-    required this.src,
-    required this.dst,
-    required this.onDone,
-  });
-
-  final WordItem word;
-  final Rect src;
-  final Rect dst;
-  final VoidCallback onDone;
-
-  @override
-  State<_FlyingCard> createState() => _FlyingCardState();
-}
-
-class _FlyingCardState extends State<_FlyingCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    )..forward().then((_) => widget.onDone());
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final t = Curves.easeInOutCubic.transform(_controller.value);
-        final rect = Rect.lerp(widget.src, widget.dst, t)!;
-        final arc = -math.sin(t * math.pi) * 46;
-        final flip = t * math.pi * 2;
-        return Positioned(
-          left: rect.left,
-          top: rect.top + arc,
-          width: rect.width,
-          height: rect.height,
-          child: Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateY(flip),
-            child: _CardFace(
-              word: widget.word,
-              isFront: true,
-              isHinted: false,
-              elevated: true,
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
 // ---------------------------------------------------------------------------
 // Victory sheet
 // ---------------------------------------------------------------------------

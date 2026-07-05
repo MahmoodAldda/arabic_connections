@@ -1,13 +1,103 @@
 {
   "levels": [
     {
+      "number": 1,
+      "title": "مفردات أساسية",
+      "categories": [
+        { "id": "fruits", "name": "فواكه", "color": "#E76F51" },
+        { "id": "colors", "name": "ألوان", "color": "#E9C46A" },
+        { "id": "animals", "name": "حيوانات", "color": "#2A9D8F" },
+        { "id": "numbers", "name": "أرقام", "color": "#7B68EE" }
+      ],
+      "words": [
+        { "id": "w1", "text": "تفاح", "categoryId": "fruits" },
+        { "id": "w2", "text": "موز", "categoryId": "fruits" },
+        { "id": "w3", "text": "عنب", "categoryId": "fruits" },
+        { "id": "w4", "text": "برتقال", "categoryId": "fruits" },
+        { "id": "w5", "text": "أحمر", "categoryId": "colors" },
+        { "id": "w6", "text": "أزرق", "categoryId": "colors" },
+        { "id": "w7", "text": "أخضر", "categoryId": "colors" },
+        { "id": "w8", "text": "أصفر", "categoryId": "colors" },
+        { "id": "w9", "text": "قطة", "categoryId": "animals" },
+        { "id": "w10", "text": "كلب", "categoryId": "animals" },
+        { "id": "w11", "text": "حصان", "categoryId": "animals" },
+        { "id": "w12", "text": "أسد", "categoryId": "animals" },
+        { "id": "w13", "text": "واحد", "categoryId": "numbers" },
+        { "id": "w14", "text": "اثنان", "categoryId": "numbers" },
+        { "id": "w15", "text": "ثلاثة", "categoryId": "numbers" },
+        { "id": "w16", "text": "أربعة", "categoryId": "numbers" }
+      ]
+    },
+    {
+      "number": 2,
+      "title": "الحياة اليومية",
+      "categories": [
+        { "id": "family", "name": "عائلة", "color": "#E0567A" },
+        { "id": "weather", "name": "طقس", "color": "#4EA8DE" },
+        { "id": "food", "name": "طعام", "color": "#F4A261" },
+        { "id": "body", "name": "جسم", "color": "#8AB17D" }
+      ],
+      "words": [
+        { "id": "w1", "text": "أب", "categoryId": "family" },
+        { "id": "w2", "text": "أم", "categoryId": "family" },
+        { "id": "w3", "text": "أخ", "categoryId": "family" },
+        { "id": "w4", "text": "أخت", "categoryId": "family" },
+        { "id": "w5", "text": "شمس", "categoryId": "weather" },
+        { "id": "w6", "text": "مطر", "categoryId": "weather" },
+        { "id": "w7", "text": "ريح", "categoryId": "weather" },
+        { "id": "w8", "text": "ثلج", "categoryId": "weather" },
+        { "id": "w9", "text": "خبز", "categoryId": "food" },
+        { "id": "w10", "text": "أرز", "categoryId": "food" },
+        { "id": "w11", "text": "لحم", "categoryId": "food" },
+        { "id": "w12", "text": "جبن", "categoryId": "food" },
+        { "id": "w13", "text": "يد", "categoryId": "body" },
+        { "id": "w14", "text": "عين", "categoryId": "body" },
+        { "id": "w15", "text": "أذن", "categoryId": "body" },
+        { "id": "w16", "text": "قلب", "categoryId": "body" }
+      ]
+    },
+    {
+      "number": 3,
+      "title": "العالم من حولنا",
+      "categories": [
+        { "id": "school", "name": "مدرسة", "color": "#5C6BC0" },
+        { "id": "transport", "name": "مواصلات", "color": "#26A69A" },
+        { "id": "jobs", "name": "مهن", "color": "#AB47BC" },
+        { "id": "countries", "name": "دول", "color": "#78909C" },
+        { "id": "sports", "name": "رياضة", "color": "#E76F51" }
+      ],
+      "words": [
+        { "id": "w1", "text": "كتاب", "categoryId": "school" },
+        { "id": "w2", "text": "قلم", "categoryId": "school" },
+        { "id": "w3", "text": "ممحاة", "categoryId": "school" },
+        { "id": "w4", "text": "دفتر", "categoryId": "school" },
+        { "id": "w5", "text": "سيارة", "categoryId": "transport" },
+        { "id": "w6", "text": "قطار", "categoryId": "transport" },
+        { "id": "w7", "text": "طائرة", "categoryId": "transport" },
+        { "id": "w8", "text": "دراجة", "categoryId": "transport" },
+        { "id": "w9", "text": "طبيب", "categoryId": "jobs" },
+        { "id": "w10", "text": "معلم", "categoryId": "jobs" },
+        { "id": "w11", "text": "مهندس", "categoryId": "jobs" },
+        { "id": "w12", "text": "طيار", "categoryId": "jobs" },
+        { "id": "w13", "text": "مصر", "categoryId": "countries" },
+        { "id": "w14", "text": "السعودية", "categoryId": "countries" },
+        { "id": "w15", "text": "المغرب", "categoryId": "countries" },
+        { "id": "w16", "text": "الأردن", "categoryId": "countries" },
+        { "id": "w17", "text": "كرة", "categoryId": "sports" },
+        { "id": "w18", "text": "سباحة", "categoryId": "sports" },
+        { "id": "w19", "text": "تنس", "categoryId": "sports" },
+        { "id": "w20", "text": "ملاكمة", "categoryId": "sports" }
+      ]
+    },
+    {
       "number": 4,
       "title": "الطبيعة والفصول",
       "categories": [
         { "id": "seasons", "name": "فصول", "color": "#FF9600" },
         { "id": "trees", "name": "أشجار", "color": "#58CC02" },
         { "id": "flowers", "name": "زهور", "color": "#CE82FF" },
-        { "id": "rivers", "name": "أنهار", "color": "#1CB0F6" }
+        { "id": "rivers", "name": "أنهار", "color": "#1CB0F6" },
+        { "id": "birds", "name": "طيور", "color": "#E9C46A" }
       ],
       "words": [
         { "id": "w1", "text": "شتاء", "categoryId": "seasons" },
@@ -25,35 +115,87 @@
         { "id": "w13", "text": "نيل", "categoryId": "rivers" },
         { "id": "w14", "text": "دجلة", "categoryId": "rivers" },
         { "id": "w15", "text": "فرات", "categoryId": "rivers" },
-        { "id": "w16", "text": "أردن", "categoryId": "rivers" }
+        { "id": "w16", "text": "أردن", "categoryId": "rivers" },
+        { "id": "w17", "text": "نسر", "categoryId": "birds" },
+        { "id": "w18", "text": "حمامة", "categoryId": "birds" },
+        { "id": "w19", "text": "بلبل", "categoryId": "birds" },
+        { "id": "w20", "text": "صقر", "categoryId": "birds" }
       ]
     },
     {
       "number": 5,
-      "title": "الرياضة والترفيه",
+      "title": "عالم واسع",
       "categories": [
-        { "id": "sports", "name": "رياضة", "color": "#E76F51" },
-        { "id": "music", "name": "موسيقى", "color": "#7B68EE" },
-        { "id": "games", "name": "ألعاب", "color": "#4EA8DE" },
-        { "id": "movies", "name": "سينما", "color": "#E0567A" }
+        { "id": "vegetables", "name": "خضروات", "color": "#58CC02" },
+        { "id": "clothes", "name": "ملابس", "color": "#7B68EE" },
+        { "id": "metals", "name": "معادن", "color": "#78909C" },
+        { "id": "planets", "name": "كواكب", "color": "#5C6BC0" },
+        { "id": "senses", "name": "حواس", "color": "#E76F51" },
+        { "id": "instruments", "name": "آلات", "color": "#E0567A" }
       ],
       "words": [
-        { "id": "w1", "text": "كرة", "categoryId": "sports" },
-        { "id": "w2", "text": "سباحة", "categoryId": "sports" },
-        { "id": "w3", "text": "ملاكمة", "categoryId": "sports" },
-        { "id": "w4", "text": "تنس", "categoryId": "sports" },
-        { "id": "w5", "text": "عود", "categoryId": "music" },
-        { "id": "w6", "text": "ناي", "categoryId": "music" },
-        { "id": "w7", "text": "طبلة", "categoryId": "music" },
-        { "id": "w8", "text": "كمان", "categoryId": "music" },
-        { "id": "w9", "text": "شطرنج", "categoryId": "games" },
-        { "id": "w10", "text": "ورق", "categoryId": "games" },
-        { "id": "w11", "text": "أحجية", "categoryId": "games" },
-        { "id": "w12", "text": "نرد", "categoryId": "games" },
-        { "id": "w13", "text": "دراما", "categoryId": "movies" },
-        { "id": "w14", "text": "كوميديا", "categoryId": "movies" },
-        { "id": "w15", "text": "وثائقي", "categoryId": "movies" },
-        { "id": "w16", "text": "رسوم", "categoryId": "movies" }
+        { "id": "w1", "text": "جزر", "categoryId": "vegetables" },
+        { "id": "w2", "text": "بطاطا", "categoryId": "vegetables" },
+        { "id": "w3", "text": "طماطم", "categoryId": "vegetables" },
+        { "id": "w4", "text": "خيار", "categoryId": "vegetables" },
+        { "id": "w5", "text": "قميص", "categoryId": "clothes" },
+        { "id": "w6", "text": "حذاء", "categoryId": "clothes" },
+        { "id": "w7", "text": "قبعة", "categoryId": "clothes" },
+        { "id": "w8", "text": "معطف", "categoryId": "clothes" },
+        { "id": "w9", "text": "ذهب", "categoryId": "metals" },
+        { "id": "w10", "text": "فضة", "categoryId": "metals" },
+        { "id": "w11", "text": "حديد", "categoryId": "metals" },
+        { "id": "w12", "text": "نحاس", "categoryId": "metals" },
+        { "id": "w13", "text": "مريخ", "categoryId": "planets" },
+        { "id": "w14", "text": "زهرة", "categoryId": "planets" },
+        { "id": "w15", "text": "عطارد", "categoryId": "planets" },
+        { "id": "w16", "text": "زحل", "categoryId": "planets" },
+        { "id": "w17", "text": "بصر", "categoryId": "senses" },
+        { "id": "w18", "text": "سمع", "categoryId": "senses" },
+        { "id": "w19", "text": "شم", "categoryId": "senses" },
+        { "id": "w20", "text": "لمس", "categoryId": "senses" },
+        { "id": "w21", "text": "عود", "categoryId": "instruments" },
+        { "id": "w22", "text": "ناي", "categoryId": "instruments" },
+        { "id": "w23", "text": "طبلة", "categoryId": "instruments" },
+        { "id": "w24", "text": "كمان", "categoryId": "instruments" }
+      ]
+    },
+    {
+      "number": 6,
+      "title": "تحدٍّ كبير",
+      "categories": [
+        { "id": "drinks", "name": "مشروبات", "color": "#F4A261" },
+        { "id": "insects", "name": "حشرات", "color": "#8AB17D" },
+        { "id": "tools", "name": "أدوات", "color": "#78909C" },
+        { "id": "space", "name": "فضاء", "color": "#5C6BC0" },
+        { "id": "birds", "name": "طيور", "color": "#E9C46A" },
+        { "id": "oceans", "name": "محيطات", "color": "#1CB0F6" }
+      ],
+      "words": [
+        { "id": "w1", "text": "ماء", "categoryId": "drinks" },
+        { "id": "w2", "text": "حليب", "categoryId": "drinks" },
+        { "id": "w3", "text": "شاي", "categoryId": "drinks" },
+        { "id": "w4", "text": "قهوة", "categoryId": "drinks" },
+        { "id": "w5", "text": "نحلة", "categoryId": "insects" },
+        { "id": "w6", "text": "نملة", "categoryId": "insects" },
+        { "id": "w7", "text": "فراشة", "categoryId": "insects" },
+        { "id": "w8", "text": "بعوضة", "categoryId": "insects" },
+        { "id": "w9", "text": "مطرقة", "categoryId": "tools" },
+        { "id": "w10", "text": "منشار", "categoryId": "tools" },
+        { "id": "w11", "text": "مفك", "categoryId": "tools" },
+        { "id": "w12", "text": "مسمار", "categoryId": "tools" },
+        { "id": "w13", "text": "نجم", "categoryId": "space" },
+        { "id": "w14", "text": "قمر", "categoryId": "space" },
+        { "id": "w15", "text": "مذنب", "categoryId": "space" },
+        { "id": "w16", "text": "مجرة", "categoryId": "space" },
+        { "id": "w17", "text": "نسر", "categoryId": "birds" },
+        { "id": "w18", "text": "حمامة", "categoryId": "birds" },
+        { "id": "w19", "text": "بلبل", "categoryId": "birds" },
+        { "id": "w20", "text": "صقر", "categoryId": "birds" },
+        { "id": "w21", "text": "هادئ", "categoryId": "oceans" },
+        { "id": "w22", "text": "أطلسي", "categoryId": "oceans" },
+        { "id": "w23", "text": "هندي", "categoryId": "oceans" },
+        { "id": "w24", "text": "متجمد", "categoryId": "oceans" }
       ]
     }
   ]

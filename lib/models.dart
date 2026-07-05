@@ -82,15 +82,19 @@ class Category {
       '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
 }
 
-/// A complete puzzle level with 16 words across 4 categories.
+/// A complete puzzle level: a set of categories, each with four words.
+///
+/// The number of categories is variable (3–6) so difficulty can scale with more
+/// categories per level. Every category is expected to have four words.
 class Level {
   const Level({
     required this.number,
     required this.title,
     required this.categories,
     required this.words,
-  }) : assert(words.length == 16, 'Each level must have exactly 16 words'),
-       assert(categories.length == 4, 'Each level must have exactly 4 categories');
+  })  : assert(categories.length >= 2, 'A level needs at least 2 categories'),
+        assert(words.length == categories.length * 4,
+            'Each category must have exactly 4 words');
 
   final int number;
   final String title;

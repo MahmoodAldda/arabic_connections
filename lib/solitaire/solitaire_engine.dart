@@ -1,142 +1,185 @@
+import 'dart:math';
+
 import '../models.dart';
 
-/// Number of tableau columns on the board.
-const int kTableauColumns = 4;
+/// Words that make up one category (also the number a foundation needs after
+/// its category card is placed).
+const int kWordsPerCategory = 4;
 
-/// Cards per completed category pile (also words-per-category).
-const int kCardsPerCategory = 4;
+/// A single playing card: either a special **category card** (which unlocks a
+/// foundation) or a normal **word card**.
+class GameCard {
+  GameCard.word(WordItem this.word)
+      : isCategory = false,
+        id = word.id,
+        categoryId = word.categoryId,
+        label = word.text;
 
-/// Total playing cards in a level (4 categories x 4 words).
-const int kCardsTotal = 16;
+  GameCard.category(Category category)
+      : isCategory = true,
+        word = null,
+        id = 'cat_${category.id}',
+        categoryId = category.id,
+        label = category.name;
 
-/// Classic staircase deal: column i receives (i + 1) cards. 1+2+3+4 = 10 cards
-/// in the tableau; the remaining 6 form the face-down stock.
-const List<int> _dealCounts = [1, 2, 3, 4];
+  final WordItem? word;
+  final bool isCategory;
+  final String id;
+  final String categoryId;
+  final String label;
 
-/// A card sitting in a tableau column. Only the top card of a column is ever
-/// [faceUp]; the ones beneath are face-down until revealed.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is GameCard && other.id == id);
+
+  @override
+  int get hashCode => id.hashCode;
+}
+
+/// A card in a tableau column. Only the top card of a column is ever [faceUp].
 class TableauCard {
-  TableauCard(this.word, {required this.faceUp});
+  TableauCard(this.card, {required this.faceUp});
 
-  final WordItem word;
+  final GameCard card;
   bool faceUp;
 }
 
 /// Where a played card came from.
 enum CardSource { tableau, waste }
 
-/// A single category pile the player builds by moving matching words onto it.
+/// A pre-labeled category foundation. Locked until its category card is placed,
+/// after which it accepts word cards of the same category.
 class Foundation {
-  Foundation();
+  Foundation(this.category);
 
-  String? categoryId;
-  final List<WordItem> cards = [];
+  final Category category;
 
-  bool get isEmpty => categoryId == null;
-  bool get isComplete => cards.length == kCardsPerCategory;
+  /// The category card (index 0, once unlocked) followed by placed word cards.
+  final List<GameCard> pile = [];
 
-  void _reset() {
-    categoryId = null;
-    cards.clear();
-  }
+  bool get unlocked => pile.isNotEmpty;
+  int get wordCount => pile.isEmpty ? 0 : pile.length - 1;
+  bool get isComplete => unlocked && wordCount == kWordsPerCategory;
+
+  void _reset() => pile.clear();
 }
 
-/// Outcome of attempting to place a card on a foundation.
-enum PlaceOutcome { started, matched, completed, rejected }
+/// Outcome of a foundation placement.
+enum PlaceOutcome { unlocked, matched, completed, rejected }
 
-/// Result returned by the play methods.
 class PlaceResult {
-  const PlaceResult(this.outcome, {this.foundationIndex, this.revealedWord});
+  const PlaceResult(this.outcome, {this.foundationIndex, this.revealedCard});
 
   final PlaceOutcome outcome;
   final int? foundationIndex;
-
-  /// The word that was flipped face-up as a result of this move, if any.
-  final WordItem? revealedWord;
+  final GameCard? revealedCard;
 
   bool get accepted => outcome != PlaceOutcome.rejected;
 }
 
-/// A suggested legal move used by the hint feature.
+/// A suggested legal move for the hint system.
 class HintMove {
   const HintMove({
     required this.source,
     required this.columnIndex,
-    required this.word,
+    required this.card,
     required this.foundationIndex,
   });
 
   final CardSource source;
-
-  /// Tableau column index (ignored when [source] is [CardSource.waste]).
-  final int columnIndex;
-  final WordItem word;
+  final int columnIndex; // tableau column, or -1 for the waste
+  final GameCard card;
   final int foundationIndex;
 }
 
-/// Records one reversible action for [SolitaireEngine.undo].
+enum _MoveType { toFoundation, toColumn, draw, recycle }
+
 class _Move {
-  _Move.place({
+  _Move.toFoundation({
     required this.source,
-    required this.columnIndex,
+    required this.fromColumn,
     required this.foundationIndex,
-    required this.word,
-    required this.claimedCategory,
+    required this.card,
     required this.revealed,
-  })  : type = _MoveType.place,
+  })  : type = _MoveType.toFoundation,
+        toColumn = -1,
+        count = 0;
+
+  _Move.toColumn({
+    required this.source,
+    required this.fromColumn,
+    required this.toColumn,
+    required this.card,
+    required this.revealed,
+  })  : type = _MoveType.toColumn,
+        foundationIndex = -1,
         count = 0;
 
   _Move.draw()
       : type = _MoveType.draw,
-        source = null,
-        columnIndex = -1,
+        source = CardSource.tableau,
+        fromColumn = -1,
+        toColumn = -1,
         foundationIndex = -1,
-        word = null,
-        claimedCategory = false,
+        card = null,
         revealed = false,
         count = 0;
 
   _Move.recycle(this.count)
       : type = _MoveType.recycle,
-        source = null,
-        columnIndex = -1,
+        source = CardSource.tableau,
+        fromColumn = -1,
+        toColumn = -1,
         foundationIndex = -1,
-        word = null,
-        claimedCategory = false,
+        card = null,
         revealed = false;
 
   final _MoveType type;
-  final CardSource? source;
-  final int columnIndex;
+  final CardSource source;
+  final int fromColumn;
+  final int toColumn;
   final int foundationIndex;
-  final WordItem? word;
-  final bool claimedCategory;
+  final GameCard? card;
   final bool revealed;
   final int count;
 }
 
-enum _MoveType { place, draw, recycle }
-
-/// Pure Klondike-style game logic for the word-solitaire board. No Flutter
-/// dependencies, so it can be unit-tested in isolation.
+/// Pure, Flutter-free game logic for the strategic word-solitaire board.
 ///
-/// Structure: a face-down [stock] you draw from into the [waste]; four tableau
-/// [columns] whose top card is face-up (rest face-down until revealed); and
-/// four category [foundations]. The top of the waste and the face-up top of any
-/// column can be moved onto a matching foundation.
+/// Rules:
+/// * Each foundation is **pre-labeled** with a category and starts **locked**.
+///   It only accepts its matching **category card** first (which unlocks it),
+///   then word cards of that category — in any order.
+/// * Only the **top** card of each column is face-up; removing it flips the one
+///   beneath. A card can be moved from a column top or the waste top.
+/// * A card can only go to a **matching foundation**. An **empty column**
+///   accepts **only a category card** (a scarce relocation buffer).
+/// * The **stock** draws to the **waste**; when empty it recycles.
+///
+/// Every dealt level is verified **greedily solvable** before use.
 class SolitaireEngine {
-  SolitaireEngine(this.level) {
+  SolitaireEngine(this.level, {Random? random}) : _rng = random ?? Random() {
+    _needed = {
+      for (final c in level.categories)
+        c.id: level.words.where((w) => w.categoryId == c.id).length,
+    };
+    foundations = [for (final c in level.categories) Foundation(c)];
     deal();
   }
 
   final Level level;
+  final Random _rng;
+
+  late final Map<String, int> _needed;
+  late final List<Foundation> foundations;
 
   final List<List<TableauCard>> columns = [];
-  final List<WordItem> stock = [];
-  final List<WordItem> waste = [];
-  final List<Foundation> foundations =
-      List.generate(kTableauColumns, (_) => Foundation());
+  final List<GameCard> stock = [];
+  final List<GameCard> waste = [];
   final List<_Move> _history = [];
+
+  int get categoryCount => level.categories.length;
+  int get columnCount => columns.length;
 
   int _moves = 0;
   int get moves => _moves;
@@ -165,34 +208,118 @@ class SolitaireEngine {
 
   bool get canUndo => _history.isNotEmpty;
 
-  WordItem? get wasteTop => waste.isEmpty ? null : waste.last;
+  GameCard? get wasteTop => waste.isEmpty ? null : waste.last;
 
   int get stockCount => stock.length;
 
-  /// The face-up top card of [col], or null if the column is empty.
-  WordItem? tableauTop(int col) {
+  GameCard? tableauTop(int col) {
     final column = columns[col];
     if (column.isEmpty) return null;
-    final top = column.last;
-    return top.faceUp ? top.word : null;
+    return column.last.faceUp ? column.last.card : null;
   }
 
-  /// Deals the level into the staircase tableau + stock, resetting all state.
+  int foundationIndexForCategory(String categoryId) =>
+      foundations.indexWhere((f) => f.category.id == categoryId);
+
+  // --- Dealing --------------------------------------------------------------
+
+  List<GameCard> _buildDeck() {
+    final deck = <GameCard>[];
+    for (final c in level.categories) {
+      deck.add(GameCard.category(c));
+    }
+    for (final w in level.words) {
+      deck.add(GameCard.word(w));
+    }
+    return deck;
+  }
+
+  int _tier() {
+    if (level.number <= 2) return 0;
+    if (level.number <= 4) return 1;
+    return 2;
+  }
+
+  /// Deals a fresh, guaranteed-solvable layout and resets all state.
   void deal() {
-    final words = level.shuffledWords();
-    columns
-      ..clear()
-      ..addAll(List.generate(kTableauColumns, (_) => <TableauCard>[]));
-    var idx = 0;
-    for (var col = 0; col < kTableauColumns; col++) {
-      final count = _dealCounts[col];
-      for (var r = 0; r < count; r++) {
-        columns[col].add(TableauCard(words[idx++], faceUp: r == count - 1));
+    final tier = _tier();
+    final columnsCount = categoryCount; // one column per category
+    final depth = tier == 0 ? 2 : 3;
+
+    for (var attempt = 0; attempt < 400; attempt++) {
+      final deck = _buildDeck()..shuffle(_rng);
+      if (tier == 0) _biasCategoryCardsAccessible(deck, columnsCount, depth);
+      final layout = _arrange(deck, columnsCount, depth);
+      if (_greedySolvable(layout.$1, layout.$2)) {
+        _adopt(layout.$1, layout.$2);
+        return;
       }
     }
+    // Fallback: category cards on top of every column → trivially reachable.
+    _adopt(_easyLayout(), <GameCard>[]);
+  }
+
+  /// Moves category cards toward positions that will end up face-up (column
+  /// tops) to make early levels gentler.
+  void _biasCategoryCardsAccessible(
+      List<GameCard> deck, int columnsCount, int depth) {
+    // The last card dealt to each column (the top) is face-up. In a
+    // column-by-column deal, those are indices depth-1, 2*depth-1, ...
+    final topIndices = <int>[
+      for (var c = 0; c < columnsCount; c++)
+        ((c + 1) * depth - 1).clamp(0, deck.length - 1),
+    ];
+    final catIndices = [
+      for (var i = 0; i < deck.length; i++)
+        if (deck[i].isCategory) i,
+    ];
+    for (var k = 0; k < catIndices.length && k < topIndices.length; k++) {
+      final from = catIndices[k];
+      final to = topIndices[k];
+      final tmp = deck[to];
+      deck[to] = deck[from];
+      deck[from] = tmp;
+    }
+  }
+
+  /// Splits [deck] into columns (top card face-up) and a face-down stock.
+  (List<List<TableauCard>>, List<GameCard>) _arrange(
+      List<GameCard> deck, int columnsCount, int depth) {
+    final tableauTarget =
+        (columnsCount * depth).clamp(0, deck.length);
+    final cols =
+        List.generate(columnsCount, (_) => <TableauCard>[]);
+    var idx = 0;
+    for (var c = 0; c < columnsCount && idx < tableauTarget; c++) {
+      for (var r = 0; r < depth && idx < tableauTarget; r++) {
+        cols[c].add(TableauCard(deck[idx], faceUp: false));
+        idx++;
+      }
+      if (cols[c].isNotEmpty) cols[c].last.faceUp = true;
+    }
+    final stockCards = deck.sublist(idx);
+    return (cols, stockCards);
+  }
+
+  List<List<TableauCard>> _easyLayout() {
+    // Every category card sits face-up on its own column; words fill the stock.
+    final cats = [for (final c in level.categories) GameCard.category(c)];
+    final cols = [
+      for (final c in cats) [TableauCard(c, faceUp: true)],
+    ];
     stock
       ..clear()
-      ..addAll(words.sublist(idx));
+      ..addAll(level.words.map(GameCard.word).toList()..shuffle(_rng));
+    return cols;
+  }
+
+  void _adopt(List<List<TableauCard>> cols, List<GameCard> stockCards) {
+    columns
+      ..clear()
+      ..addAll(cols);
+    stock
+      ..clear()
+      ..addAll(stockCards);
     waste.clear();
     for (final f in foundations) {
       f._reset();
@@ -205,118 +332,94 @@ class SolitaireEngine {
     _streak = 0;
   }
 
-  bool _canPlaceWord(WordItem word, int foundationIndex) {
+  // --- Placement rules ------------------------------------------------------
+
+  bool canPlaceOnFoundation(GameCard card, int foundationIndex) {
     if (foundationIndex < 0 || foundationIndex >= foundations.length) {
       return false;
     }
-    final foundation = foundations[foundationIndex];
-    if (foundation.isComplete) return false;
-    if (foundation.isEmpty) {
-      return !_categoryClaimedElsewhere(word.categoryId, foundationIndex);
+    final f = foundations[foundationIndex];
+    if (f.category.id != card.categoryId) return false;
+    if (card.isCategory) return !f.unlocked;
+    return f.unlocked && f.wordCount < kWordsPerCategory;
+  }
+
+  bool canPlaceOnColumn(GameCard card, int columnIndex) {
+    if (columnIndex < 0 || columnIndex >= columns.length) return false;
+    return columns[columnIndex].isEmpty && card.isCategory;
+  }
+
+  GameCard? _sourceTop(CardSource source, int col) =>
+      source == CardSource.waste ? wasteTop : tableauTop(col);
+
+  GameCard _removeSourceTop(CardSource source, int col,
+      {required void Function(GameCard? revealed) onRevealed}) {
+    if (source == CardSource.waste) {
+      onRevealed(null);
+      return waste.removeLast();
     }
-    return foundation.categoryId == word.categoryId;
-  }
-
-  bool _categoryClaimedElsewhere(String categoryId, int exceptIndex) {
-    for (var i = 0; i < foundations.length; i++) {
-      if (i == exceptIndex) continue;
-      if (foundations[i].categoryId == categoryId) return true;
+    final card = columns[col].removeLast().card;
+    GameCard? revealed;
+    if (columns[col].isNotEmpty && !columns[col].last.faceUp) {
+      columns[col].last.faceUp = true;
+      revealed = columns[col].last.card;
     }
-    return false;
+    onRevealed(revealed);
+    return card;
   }
 
-  /// Whether the face-up top of [col] can be placed on [foundationIndex].
-  bool canPlaceTableau(int col, int foundationIndex) {
-    final word = tableauTop(col);
-    return word != null && _canPlaceWord(word, foundationIndex);
-  }
-
-  /// Whether the waste top can be placed on [foundationIndex].
-  bool canPlaceWaste(int foundationIndex) {
-    final word = wasteTop;
-    return word != null && _canPlaceWord(word, foundationIndex);
-  }
-
-  /// Whether [word] (regardless of its source) could legally go on
-  /// [foundationIndex]. Used by the UI to find a card's destination slot.
-  bool canPlace(WordItem word, int foundationIndex) =>
-      _canPlaceWord(word, foundationIndex);
-
-  PlaceResult _applyPlacement(
-    WordItem word,
-    int foundationIndex, {
-    required CardSource source,
-    required int columnIndex,
-    required bool revealed,
-  }) {
-    final foundation = foundations[foundationIndex];
-    final claimed = foundation.isEmpty;
-    if (claimed) foundation.categoryId = word.categoryId;
-    foundation.cards.add(word);
-    _history.add(_Move.place(
+  /// Places the top card of [source]/[fromColumn] onto foundation [index].
+  PlaceResult playToFoundation(
+      CardSource source, int fromColumn, int foundationIndex) {
+    final card = _sourceTop(source, fromColumn);
+    if (card == null || !canPlaceOnFoundation(card, foundationIndex)) {
+      _mistakes++;
+      _combo = 0;
+      return const PlaceResult(PlaceOutcome.rejected);
+    }
+    GameCard? revealed;
+    _removeSourceTop(source, fromColumn, onRevealed: (r) => revealed = r);
+    foundations[foundationIndex].pile.add(card);
+    _history.add(_Move.toFoundation(
       source: source,
-      columnIndex: columnIndex,
+      fromColumn: fromColumn,
       foundationIndex: foundationIndex,
-      word: word,
-      claimedCategory: claimed,
-      revealed: revealed,
+      card: card,
+      revealed: revealed != null,
     ));
     _moves++;
     _combo++;
     if (_combo > _bestCombo) _bestCombo = _combo;
-    final outcome = foundation.isComplete
-        ? PlaceOutcome.completed
-        : (claimed ? PlaceOutcome.started : PlaceOutcome.matched);
+    final f = foundations[foundationIndex];
+    final outcome = card.isCategory
+        ? PlaceOutcome.unlocked
+        : (f.isComplete ? PlaceOutcome.completed : PlaceOutcome.matched);
     if (outcome == PlaceOutcome.completed) _streak++;
-    return PlaceResult(outcome, foundationIndex: foundationIndex);
+    return PlaceResult(outcome,
+        foundationIndex: foundationIndex, revealedCard: revealed);
   }
 
-  /// Moves the face-up top of [col] onto [foundationIndex], flipping the newly
-  /// exposed card if there is one.
-  PlaceResult playFromTableau(int col, int foundationIndex) {
-    if (!canPlaceTableau(col, foundationIndex)) {
-      _mistakes++;
-      _combo = 0;
+  /// Moves a category card from [source]/[fromColumn] onto empty column [toCol].
+  /// Returns false if the move is illegal.
+  PlaceResult moveToColumn(CardSource source, int fromColumn, int toCol) {
+    final card = _sourceTop(source, fromColumn);
+    if (card == null || !canPlaceOnColumn(card, toCol)) {
       return const PlaceResult(PlaceOutcome.rejected);
     }
-    final card = columns[col].removeLast();
-    var revealed = false;
-    WordItem? revealedWord;
-    if (columns[col].isNotEmpty && !columns[col].last.faceUp) {
-      columns[col].last.faceUp = true;
-      revealed = true;
-      revealedWord = columns[col].last.word;
-    }
-    final result = _applyPlacement(
-      card.word,
-      foundationIndex,
-      source: CardSource.tableau,
-      columnIndex: col,
-      revealed: revealed,
-    );
-    return PlaceResult(result.outcome,
-        foundationIndex: result.foundationIndex, revealedWord: revealedWord);
+    GameCard? revealed;
+    _removeSourceTop(source, fromColumn, onRevealed: (r) => revealed = r);
+    columns[toCol].add(TableauCard(card, faceUp: true));
+    _history.add(_Move.toColumn(
+      source: source,
+      fromColumn: fromColumn,
+      toColumn: toCol,
+      card: card,
+      revealed: revealed != null,
+    ));
+    _moves++;
+    return PlaceResult(PlaceOutcome.matched, revealedCard: revealed);
   }
 
-  /// Moves the waste top onto [foundationIndex].
-  PlaceResult playFromWaste(int foundationIndex) {
-    if (!canPlaceWaste(foundationIndex)) {
-      _mistakes++;
-      _combo = 0;
-      return const PlaceResult(PlaceOutcome.rejected);
-    }
-    final word = waste.removeLast();
-    return _applyPlacement(
-      word,
-      foundationIndex,
-      source: CardSource.waste,
-      columnIndex: -1,
-      revealed: false,
-    );
-  }
-
-  /// Flips the next stock card onto the waste. When the stock is empty, recycles
-  /// the waste back into the stock. Returns false only if both are empty.
   bool drawFromStock() {
     if (stock.isNotEmpty) {
       waste.add(stock.removeLast());
@@ -333,23 +436,28 @@ class SolitaireEngine {
     return false;
   }
 
-  /// Reverts the most recent action. Returns false if there is nothing to undo.
+  void _returnToSource(_Move move) {
+    if (move.source == CardSource.waste) {
+      waste.add(move.card!);
+    } else {
+      if (move.revealed && columns[move.fromColumn].isNotEmpty) {
+        columns[move.fromColumn].last.faceUp = false;
+      }
+      columns[move.fromColumn].add(TableauCard(move.card!, faceUp: true));
+    }
+  }
+
   bool undo() {
     if (_history.isEmpty) return false;
     final move = _history.removeLast();
     switch (move.type) {
-      case _MoveType.place:
-        final foundation = foundations[move.foundationIndex];
-        foundation.cards.removeLast();
-        if (move.claimedCategory) foundation.categoryId = null;
-        if (move.source == CardSource.waste) {
-          waste.add(move.word!);
-        } else {
-          if (move.revealed && columns[move.columnIndex].isNotEmpty) {
-            columns[move.columnIndex].last.faceUp = false;
-          }
-          columns[move.columnIndex].add(TableauCard(move.word!, faceUp: true));
-        }
+      case _MoveType.toFoundation:
+        foundations[move.foundationIndex].pile.removeLast();
+        _returnToSource(move);
+        if (_moves > 0) _moves--;
+      case _MoveType.toColumn:
+        columns[move.toColumn].removeLast();
+        _returnToSource(move);
         if (_moves > 0) _moves--;
       case _MoveType.draw:
         if (waste.isNotEmpty) stock.add(waste.removeLast());
@@ -361,50 +469,97 @@ class SolitaireEngine {
     return true;
   }
 
-  /// Suggests a legal move, preferring the waste top, then tableau tops that
-  /// match an already-claimed foundation, then any legal placement. Returns
-  /// null if nothing can currently be placed.
+  // --- Hints ----------------------------------------------------------------
+
   HintMove? suggestMove() {
-    HintMove? starting;
-
-    for (var fi = 0; fi < foundations.length; fi++) {
-      final w = wasteTop;
-      if (w != null && canPlaceWaste(fi)) {
-        if (!foundations[fi].isEmpty) {
-          return HintMove(
-              source: CardSource.waste,
-              columnIndex: -1,
-              word: w,
-              foundationIndex: fi);
-        }
-        starting ??= HintMove(
-            source: CardSource.waste,
-            columnIndex: -1,
-            word: w,
-            foundationIndex: fi);
+    HintMove? best;
+    void consider(CardSource source, int col, GameCard? card) {
+      if (card == null) return;
+      final fi = foundationIndexForCategory(card.categoryId);
+      if (fi < 0 || !canPlaceOnFoundation(card, fi)) return;
+      final move =
+          HintMove(source: source, columnIndex: col, card: card, foundationIndex: fi);
+      // Prefer word cards that complete/extend an unlocked foundation, then
+      // category cards that unlock a new one.
+      if (best == null) {
+        best = move;
+      } else if (!card.isCategory && best!.card.isCategory) {
+        best = move;
       }
     }
 
-    for (var col = 0; col < columns.length; col++) {
-      final w = tableauTop(col);
-      if (w == null) continue;
-      for (var fi = 0; fi < foundations.length; fi++) {
-        if (!canPlaceTableau(col, fi)) continue;
-        if (!foundations[fi].isEmpty) {
-          return HintMove(
-              source: CardSource.tableau,
-              columnIndex: col,
-              word: w,
-              foundationIndex: fi);
-        }
-        starting ??= HintMove(
-            source: CardSource.tableau,
-            columnIndex: col,
-            word: w,
-            foundationIndex: fi);
-      }
+    consider(CardSource.waste, -1, wasteTop);
+    for (var c = 0; c < columns.length; c++) {
+      consider(CardSource.tableau, c, tableauTop(c));
     }
+    return best;
+  }
 
-    return starting;
+  // --- Solvability (greedy is complete for this rule set) -------------------
+
+  bool _canPlaceSim(GameCard card, Set<String> unlocked, Map<String, int> wc) {
+    if (card.isCategory) return !unlocked.contains(card.categoryId);
+    return unlocked.contains(card.categoryId) &&
+        wc[card.categoryId]! < _needed[card.categoryId]!;
+  }
+
+  void _applySim(GameCard card, Set<String> unlocked, Map<String, int> wc) {
+    if (card.isCategory) {
+      unlocked.add(card.categoryId);
+    } else {
+      wc[card.categoryId] = wc[card.categoryId]! + 1;
+    }
+  }
+
+  /// Because placing any exposed card is never harmful here, a greedy playout is
+  /// a *complete* solvability test: it wins iff the deal is winnable.
+  bool _greedySolvable(
+      List<List<TableauCard>> cols0, List<GameCard> stock0) {
+    final cols = [
+      for (final col in cols0)
+        [for (final t in col) TableauCard(t.card, faceUp: t.faceUp)],
+    ];
+    final stock = List<GameCard>.from(stock0);
+    final waste = <GameCard>[];
+    final unlocked = <String>{};
+    final wc = {for (final id in _needed.keys) id: 0};
+    final totalToPlace =
+        _needed.values.fold<int>(0, (a, b) => a + b) + _needed.length;
+    var placed = 0;
+    var drawsSinceProgress = 0;
+
+    while (placed < totalToPlace) {
+      var progressed = false;
+      for (final col in cols) {
+        if (col.isEmpty || !col.last.faceUp) continue;
+        if (_canPlaceSim(col.last.card, unlocked, wc)) {
+          _applySim(col.last.card, unlocked, wc);
+          col.removeLast();
+          if (col.isNotEmpty && !col.last.faceUp) col.last.faceUp = true;
+          placed++;
+          progressed = true;
+        }
+      }
+      if (waste.isNotEmpty && _canPlaceSim(waste.last, unlocked, wc)) {
+        _applySim(waste.last, unlocked, wc);
+        waste.removeLast();
+        placed++;
+        progressed = true;
+      }
+      if (placed >= totalToPlace) break;
+      if (progressed) {
+        drawsSinceProgress = 0;
+        continue;
+      }
+      if (stock.isEmpty && waste.isEmpty) return false;
+      if (stock.isEmpty) {
+        stock.addAll(waste.reversed);
+        waste.clear();
+      }
+      waste.add(stock.removeLast());
+      drawsSinceProgress++;
+      if (drawsSinceProgress > stock.length + waste.length + 1) return false;
+    }
+    return true;
   }
 }

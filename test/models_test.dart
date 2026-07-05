@@ -7,9 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('Level data integrity', () {
     for (final level in sampleLevels) {
-      test('Level ${level.number} has 16 words and 4 categories', () {
-        expect(level.words.length, 16);
-        expect(level.categories.length, 4);
+      test('Level ${level.number} has 4 words per category', () {
+        expect(level.categories.length, greaterThanOrEqualTo(2));
+        expect(level.words.length, level.categories.length * 4);
+        for (final category in level.categories) {
+          final count =
+              level.words.where((w) => w.categoryId == category.id).length;
+          expect(count, 4, reason: 'category ${category.id}');
+        }
       });
     }
   });
