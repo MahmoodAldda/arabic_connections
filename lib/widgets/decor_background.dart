@@ -97,8 +97,41 @@ class _DecorPainter extends CustomPainter {
 
     if (felt) {
       _paintDiamonds(canvas, size);
+      _paintSpotlight(canvas, size);
+      _paintTopSheen(canvas, size);
       _paintVignette(canvas, size);
     }
+  }
+
+  /// Warm stage light glowing from just above the board center.
+  void _paintSpotlight(Canvas canvas, Size size) {
+    final center = Offset(size.width * 0.5, size.height * 0.42);
+    final radius = size.width * 0.85;
+    final paint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white.withValues(alpha: 0.16),
+          Colors.white.withValues(alpha: 0.05),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.35, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawCircle(center, radius, paint);
+  }
+
+  /// Cool highlight along the very top edge for depth.
+  void _paintTopSheen(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height * 0.34);
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.white.withValues(alpha: 0.10),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, paint);
   }
 
   void _paintDiamonds(Canvas canvas, Size size) {
@@ -124,11 +157,14 @@ class _DecorPainter extends CustomPainter {
     final rect = Offset.zero & size;
     final paint = Paint()
       ..shader = RadialGradient(
+        center: const Alignment(0, -0.15),
+        radius: 0.95,
         colors: [
           Colors.transparent,
-          Colors.black.withValues(alpha: 0.22),
+          Colors.black.withValues(alpha: 0.12),
+          Colors.black.withValues(alpha: 0.34),
         ],
-        stops: const [0.62, 1.0],
+        stops: const [0.5, 0.82, 1.0],
       ).createShader(rect);
     canvas.drawRect(rect, paint);
   }

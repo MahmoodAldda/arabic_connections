@@ -1,16 +1,31 @@
 import '../models.dart';
 
-/// Number of tableau columns dealt on the board.
-const int kSolitaireColumns = 4;
+/// Number of tableau columns on the board.
+const int kTableauColumns = 4;
 
-/// Cards per column (4 columns x 4 = 16 words per level).
-const int kSolitaireCardsPerColumn = 4;
+/// Cards per completed category pile (also words-per-category).
+const int kCardsPerCategory = 4;
 
-/// A single category pile the player builds by dropping matching words.
-///
-/// A foundation starts empty (no [categoryId]). The first word dropped on it
-/// "claims" the category and reveals its name in the UI. It is [isComplete]
-/// once all four words of that category are stacked on it.
+/// Total playing cards in a level (4 categories x 4 words).
+const int kCardsTotal = 16;
+
+/// Classic staircase deal: column i receives (i + 1) cards. 1+2+3+4 = 10 cards
+/// in the tableau; the remaining 6 form the face-down stock.
+const List<int> _dealCounts = [1, 2, 3, 4];
+
+/// A card sitting in a tableau column. Only the top card of a column is ever
+/// [faceUp]; the ones beneath are face-down until revealed.
+class TableauCard {
+  TableauCard(this.word, {required this.faceUp});
+
+  final WordItem word;
+  bool faceUp;
+}
+
+/// Where a played card came from.
+enum CardSource { tableau, waste }
+
+/// A single category pile the player builds by moving matching words onto it.
 class Foundation {
   Foundation();
 
@@ -18,8 +33,7 @@ class Foundation {
   final List<WordItem> cards = [];
 
   bool get isEmpty => categoryId == null;
-
-  bool get isComplete => cards.length == kSolitaireCardsPerColumn;
+  bool get isComplete => cards.length == kCardsPerCategory;
 
   void _reset() {
     categoryId = null;
@@ -28,57 +42,88 @@ class Foundation {
 }
 
 /// Outcome of attempting to place a card on a foundation.
-enum PlaceOutcome {
-  /// The card claimed an empty foundation and revealed a new category.
-  started,
+enum PlaceOutcome { started, matched, completed, rejected }
 
-  /// The card matched an already-claimed foundation.
-  matched,
-
-  /// The card matched and finished the group (4th card).
-  completed,
-
-  /// The move was illegal; board state is unchanged.
-  rejected,
-}
-
-/// Result returned by [SolitaireEngine.tryPlace].
+/// Result returned by the play methods.
 class PlaceResult {
-  const PlaceResult(this.outcome, {this.foundationIndex});
+  const PlaceResult(this.outcome, {this.foundationIndex, this.revealedWord});
 
   final PlaceOutcome outcome;
   final int? foundationIndex;
+
+  /// The word that was flipped face-up as a result of this move, if any.
+  final WordItem? revealedWord;
 
   bool get accepted => outcome != PlaceOutcome.rejected;
 }
 
 /// A suggested legal move used by the hint feature.
-class HintPlacement {
-  const HintPlacement({required this.word, required this.foundationIndex});
+class HintMove {
+  const HintMove({
+    required this.source,
+    required this.columnIndex,
+    required this.word,
+    required this.foundationIndex,
+  });
 
+  final CardSource source;
+
+  /// Tableau column index (ignored when [source] is [CardSource.waste]).
+  final int columnIndex;
   final WordItem word;
   final int foundationIndex;
 }
 
-/// Records one applied placement so it can be reverted by [SolitaireEngine.undo].
+/// Records one reversible action for [SolitaireEngine.undo].
 class _Move {
-  _Move({
+  _Move.place({
+    required this.source,
     required this.columnIndex,
     required this.foundationIndex,
     required this.word,
     required this.claimedCategory,
-  });
+    required this.revealed,
+  })  : type = _MoveType.place,
+        count = 0;
 
+  _Move.draw()
+      : type = _MoveType.draw,
+        source = null,
+        columnIndex = -1,
+        foundationIndex = -1,
+        word = null,
+        claimedCategory = false,
+        revealed = false,
+        count = 0;
+
+  _Move.recycle(this.count)
+      : type = _MoveType.recycle,
+        source = null,
+        columnIndex = -1,
+        foundationIndex = -1,
+        word = null,
+        claimedCategory = false,
+        revealed = false;
+
+  final _MoveType type;
+  final CardSource? source;
   final int columnIndex;
   final int foundationIndex;
-  final WordItem word;
-
-  /// Whether this move claimed a previously-empty foundation (so undo un-claims it).
+  final WordItem? word;
   final bool claimedCategory;
+  final bool revealed;
+  final int count;
 }
 
-/// Pure game logic for the word-solitaire board. No Flutter dependencies, so it
-/// can be unit-tested in isolation.
+enum _MoveType { place, draw, recycle }
+
+/// Pure Klondike-style game logic for the word-solitaire board. No Flutter
+/// dependencies, so it can be unit-tested in isolation.
+///
+/// Structure: a face-down [stock] you draw from into the [waste]; four tableau
+/// [columns] whose top card is face-up (rest face-down until revealed); and
+/// four category [foundations]. The top of the waste and the face-up top of any
+/// column can be moved onto a matching foundation.
 class SolitaireEngine {
   SolitaireEngine(this.level) {
     deal();
@@ -86,9 +131,11 @@ class SolitaireEngine {
 
   final Level level;
 
-  final List<List<WordItem>> columns = [];
+  final List<List<TableauCard>> columns = [];
+  final List<WordItem> stock = [];
+  final List<WordItem> waste = [];
   final List<Foundation> foundations =
-      List.generate(kSolitaireColumns, (_) => Foundation());
+      List.generate(kTableauColumns, (_) => Foundation());
   final List<_Move> _history = [];
 
   int _moves = 0;
@@ -98,43 +145,55 @@ class SolitaireEngine {
   int get mistakes => _mistakes;
 
   int _combo = 0;
-
-  /// Current run of consecutive correct placements (resets on a mistake).
   int get combo => _combo;
 
   int _bestCombo = 0;
   int get bestCombo => _bestCombo;
 
   int _streak = 0;
-
-  /// Consecutive completed categories (resets on a mistake).
   int get streak => _streak;
 
-  /// Star rating (1..3) based on how cleanly the level was solved.
   int get stars {
     if (_mistakes == 0) return 3;
     if (_mistakes <= 2) return 2;
     return 1;
   }
 
-  /// Number of fully-completed category piles (0..4).
   int get completedCount => foundations.where((f) => f.isComplete).length;
 
-  bool get isWon =>
-      foundations.every((f) => f.isComplete) &&
-      columns.every((c) => c.isEmpty);
+  bool get isWon => foundations.every((f) => f.isComplete);
 
   bool get canUndo => _history.isNotEmpty;
 
-  /// Deals the level's 16 words into [kSolitaireColumns] columns, resetting state.
+  WordItem? get wasteTop => waste.isEmpty ? null : waste.last;
+
+  int get stockCount => stock.length;
+
+  /// The face-up top card of [col], or null if the column is empty.
+  WordItem? tableauTop(int col) {
+    final column = columns[col];
+    if (column.isEmpty) return null;
+    final top = column.last;
+    return top.faceUp ? top.word : null;
+  }
+
+  /// Deals the level into the staircase tableau + stock, resetting all state.
   void deal() {
     final words = level.shuffledWords();
     columns
       ..clear()
-      ..addAll(List.generate(kSolitaireColumns, (_) => <WordItem>[]));
-    for (var i = 0; i < words.length; i++) {
-      columns[i % kSolitaireColumns].add(words[i]);
+      ..addAll(List.generate(kTableauColumns, (_) => <TableauCard>[]));
+    var idx = 0;
+    for (var col = 0; col < kTableauColumns; col++) {
+      final count = _dealCounts[col];
+      for (var r = 0; r < count; r++) {
+        columns[col].add(TableauCard(words[idx++], faceUp: r == count - 1));
+      }
     }
+    stock
+      ..clear()
+      ..addAll(words.sublist(idx));
+    waste.clear();
     for (final f in foundations) {
       f._reset();
     }
@@ -146,30 +205,13 @@ class SolitaireEngine {
     _streak = 0;
   }
 
-  /// The playable card at the front of each column (null for empty columns),
-  /// indexed by column.
-  List<WordItem?> get frontCards =>
-      columns.map((c) => c.isEmpty ? null : c.last).toList();
-
-  /// Index of the column whose front card is [word], or -1 if it is not a front card.
-  int columnIndexOfFront(WordItem word) {
-    for (var i = 0; i < columns.length; i++) {
-      final c = columns[i];
-      if (c.isNotEmpty && c.last.id == word.id) return i;
-    }
-    return -1;
-  }
-
-  /// Whether [word] (a front card) may legally be placed on [foundationIndex].
-  bool canPlace(WordItem word, int foundationIndex) {
+  bool _canPlaceWord(WordItem word, int foundationIndex) {
     if (foundationIndex < 0 || foundationIndex >= foundations.length) {
       return false;
     }
-    if (columnIndexOfFront(word) == -1) return false;
     final foundation = foundations[foundationIndex];
     if (foundation.isComplete) return false;
     if (foundation.isEmpty) {
-      // Cannot start a new group for a category already claimed elsewhere.
       return !_categoryClaimedElsewhere(word.categoryId, foundationIndex);
     }
     return foundation.categoryId == word.categoryId;
@@ -183,32 +225,45 @@ class SolitaireEngine {
     return false;
   }
 
-  /// Attempts to move the front card [word] onto foundation [foundationIndex].
-  /// Returns [PlaceOutcome.rejected] without mutating state if the move is illegal.
-  PlaceResult tryPlace(WordItem word, int foundationIndex) {
-    if (!canPlace(word, foundationIndex)) {
-      _mistakes++;
-      _combo = 0;
-      return const PlaceResult(PlaceOutcome.rejected);
-    }
+  /// Whether the face-up top of [col] can be placed on [foundationIndex].
+  bool canPlaceTableau(int col, int foundationIndex) {
+    final word = tableauTop(col);
+    return word != null && _canPlaceWord(word, foundationIndex);
+  }
 
-    final columnIndex = columnIndexOfFront(word);
+  /// Whether the waste top can be placed on [foundationIndex].
+  bool canPlaceWaste(int foundationIndex) {
+    final word = wasteTop;
+    return word != null && _canPlaceWord(word, foundationIndex);
+  }
+
+  /// Whether [word] (regardless of its source) could legally go on
+  /// [foundationIndex]. Used by the UI to find a card's destination slot.
+  bool canPlace(WordItem word, int foundationIndex) =>
+      _canPlaceWord(word, foundationIndex);
+
+  PlaceResult _applyPlacement(
+    WordItem word,
+    int foundationIndex, {
+    required CardSource source,
+    required int columnIndex,
+    required bool revealed,
+  }) {
     final foundation = foundations[foundationIndex];
     final claimed = foundation.isEmpty;
-
     if (claimed) foundation.categoryId = word.categoryId;
     foundation.cards.add(word);
-    columns[columnIndex].removeLast();
-    _history.add(_Move(
+    _history.add(_Move.place(
+      source: source,
       columnIndex: columnIndex,
       foundationIndex: foundationIndex,
       word: word,
       claimedCategory: claimed,
+      revealed: revealed,
     ));
     _moves++;
     _combo++;
     if (_combo > _bestCombo) _bestCombo = _combo;
-
     final outcome = foundation.isComplete
         ? PlaceOutcome.completed
         : (claimed ? PlaceOutcome.started : PlaceOutcome.matched);
@@ -216,33 +271,140 @@ class SolitaireEngine {
     return PlaceResult(outcome, foundationIndex: foundationIndex);
   }
 
-  /// Reverts the most recent placement. Returns false if there is nothing to undo.
+  /// Moves the face-up top of [col] onto [foundationIndex], flipping the newly
+  /// exposed card if there is one.
+  PlaceResult playFromTableau(int col, int foundationIndex) {
+    if (!canPlaceTableau(col, foundationIndex)) {
+      _mistakes++;
+      _combo = 0;
+      return const PlaceResult(PlaceOutcome.rejected);
+    }
+    final card = columns[col].removeLast();
+    var revealed = false;
+    WordItem? revealedWord;
+    if (columns[col].isNotEmpty && !columns[col].last.faceUp) {
+      columns[col].last.faceUp = true;
+      revealed = true;
+      revealedWord = columns[col].last.word;
+    }
+    final result = _applyPlacement(
+      card.word,
+      foundationIndex,
+      source: CardSource.tableau,
+      columnIndex: col,
+      revealed: revealed,
+    );
+    return PlaceResult(result.outcome,
+        foundationIndex: result.foundationIndex, revealedWord: revealedWord);
+  }
+
+  /// Moves the waste top onto [foundationIndex].
+  PlaceResult playFromWaste(int foundationIndex) {
+    if (!canPlaceWaste(foundationIndex)) {
+      _mistakes++;
+      _combo = 0;
+      return const PlaceResult(PlaceOutcome.rejected);
+    }
+    final word = waste.removeLast();
+    return _applyPlacement(
+      word,
+      foundationIndex,
+      source: CardSource.waste,
+      columnIndex: -1,
+      revealed: false,
+    );
+  }
+
+  /// Flips the next stock card onto the waste. When the stock is empty, recycles
+  /// the waste back into the stock. Returns false only if both are empty.
+  bool drawFromStock() {
+    if (stock.isNotEmpty) {
+      waste.add(stock.removeLast());
+      _history.add(_Move.draw());
+      return true;
+    }
+    if (waste.isNotEmpty) {
+      final count = waste.length;
+      stock.addAll(waste.reversed);
+      waste.clear();
+      _history.add(_Move.recycle(count));
+      return true;
+    }
+    return false;
+  }
+
+  /// Reverts the most recent action. Returns false if there is nothing to undo.
   bool undo() {
     if (_history.isEmpty) return false;
     final move = _history.removeLast();
-    final foundation = foundations[move.foundationIndex];
-    foundation.cards.removeLast();
-    if (move.claimedCategory) foundation.categoryId = null;
-    columns[move.columnIndex].add(move.word);
-    if (_moves > 0) _moves--;
+    switch (move.type) {
+      case _MoveType.place:
+        final foundation = foundations[move.foundationIndex];
+        foundation.cards.removeLast();
+        if (move.claimedCategory) foundation.categoryId = null;
+        if (move.source == CardSource.waste) {
+          waste.add(move.word!);
+        } else {
+          if (move.revealed && columns[move.columnIndex].isNotEmpty) {
+            columns[move.columnIndex].last.faceUp = false;
+          }
+          columns[move.columnIndex].add(TableauCard(move.word!, faceUp: true));
+        }
+        if (_moves > 0) _moves--;
+      case _MoveType.draw:
+        if (waste.isNotEmpty) stock.add(waste.removeLast());
+      case _MoveType.recycle:
+        final moved = stock.reversed.take(move.count).toList();
+        stock.removeRange(stock.length - move.count, stock.length);
+        waste.addAll(moved);
+    }
     return true;
   }
 
-  /// Returns a legal move to suggest as a hint, preferring a card that matches an
-  /// already-claimed foundation before one that would start a new group. Returns
-  /// null if no legal move exists (e.g. the board is solved).
-  HintPlacement? suggestMove() {
-    HintPlacement? startingMove;
-    for (final word in frontCards) {
-      if (word == null) continue;
-      for (var i = 0; i < foundations.length; i++) {
-        if (!canPlace(word, i)) continue;
-        if (!foundations[i].isEmpty) {
-          return HintPlacement(word: word, foundationIndex: i);
+  /// Suggests a legal move, preferring the waste top, then tableau tops that
+  /// match an already-claimed foundation, then any legal placement. Returns
+  /// null if nothing can currently be placed.
+  HintMove? suggestMove() {
+    HintMove? starting;
+
+    for (var fi = 0; fi < foundations.length; fi++) {
+      final w = wasteTop;
+      if (w != null && canPlaceWaste(fi)) {
+        if (!foundations[fi].isEmpty) {
+          return HintMove(
+              source: CardSource.waste,
+              columnIndex: -1,
+              word: w,
+              foundationIndex: fi);
         }
-        startingMove ??= HintPlacement(word: word, foundationIndex: i);
+        starting ??= HintMove(
+            source: CardSource.waste,
+            columnIndex: -1,
+            word: w,
+            foundationIndex: fi);
       }
     }
-    return startingMove;
+
+    for (var col = 0; col < columns.length; col++) {
+      final w = tableauTop(col);
+      if (w == null) continue;
+      for (var fi = 0; fi < foundations.length; fi++) {
+        if (!canPlaceTableau(col, fi)) continue;
+        if (!foundations[fi].isEmpty) {
+          return HintMove(
+              source: CardSource.tableau,
+              columnIndex: col,
+              word: w,
+              foundationIndex: fi);
+        }
+        starting ??= HintMove(
+            source: CardSource.tableau,
+            columnIndex: col,
+            word: w,
+            foundationIndex: fi);
+      }
+    }
+
+    return starting;
   }
 }

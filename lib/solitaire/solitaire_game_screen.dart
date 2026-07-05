@@ -17,8 +17,19 @@ import '../widgets/glass_container.dart';
 import '../widgets/pressable_button.dart';
 import 'solitaire_engine.dart';
 
-/// Premium green-felt word-solitaire board with juicy animations.
-/// (Game logic + scoring live in [SolitaireEngine].)
+/// Identifies a playable card and where it came from.
+class _CardRef {
+  const _CardRef(this.source, this.column, this.word);
+
+  final CardSource source;
+  final int column; // tableau column, or -1 for the waste
+  final WordItem word;
+}
+
+/// Premium Klondike-style word-solitaire board: a face-down stock you draw into
+/// a waste pile, staircase tableau columns with decorative card backs, and four
+/// category foundations that cards fly into. Game logic lives in
+/// [SolitaireEngine].
 class SolitaireGameScreen extends StatefulWidget {
   const SolitaireGameScreen({
     super.key,
@@ -59,8 +70,10 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   int _boardGeneration = 0;
 
   final List<GlobalKey> _foundationKeys =
-      List.generate(kSolitaireColumns, (_) => GlobalKey());
+      List.generate(kTableauColumns, (_) => GlobalKey());
   final Map<String, GlobalKey> _cardKeys = {};
+  final GlobalKey _coinKey = GlobalKey();
+  final GlobalKey _wasteKey = GlobalKey();
 
   Level get _level => widget.session.activeLevel;
 
@@ -78,7 +91,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     );
     _dealController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1000),
     );
     _initLevel();
     widget.playerService.addListener(_onPlayerUpdate);
@@ -97,7 +110,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     super.dispose();
   }
 
-  void _initLevel() {
+  void _initLevel({bool showIntro = false}) {
     _cardKeys.clear();
     setState(() {
       _engine = SolitaireEngine(_level);
@@ -113,6 +126,46 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     });
     _dealController.forward(from: 0);
     _startTimer();
+    if (showIntro) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showLevelIntro());
+    }
+  }
+
+  void _showLevelIntro() {
+    if (!mounted) return;
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _LevelIntro(
+        text: widget.session.isDaily ? _level.title : 'المستوى ${_level.number}',
+        onDone: () => entry.remove(),
+      ),
+    );
+    overlay.insert(entry);
+  }
+
+  void _flyCoinsToBadge() {
+    final badgeCtx = _coinKey.currentContext;
+    if (badgeCtx == null) return;
+    final box = badgeCtx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final target = box.localToGlobal(box.size.center(Offset.zero));
+    final screen = MediaQuery.of(context).size;
+    final origin = Offset(screen.width / 2, screen.height * 0.5);
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _CoinFly(
+        origin: origin,
+        target: target,
+        count: 12,
+        onDone: () {
+          entry.remove();
+          _sound.play(SoundFx.coins);
+        },
+      ),
+    );
+    overlay.insert(entry);
   }
 
   void _startTimer() {
@@ -149,37 +202,41 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     return -1;
   }
 
-  /// Tap-to-place: the card flies (and flips) to its foundation.
-  void _tapPlace(WordItem word) {
+  /// Tap-to-place: the card flies (and flips) from its source to a foundation.
+  void _tapPlace(_CardRef ref) {
     if (_isComplete || _flyingWordId != null) return;
-    final target = _findTarget(word);
+    final target = _findTarget(ref.word);
     if (target == -1) {
       _sound.play(SoundFx.wrong);
       _rejectFeedback();
       return;
     }
-    final src = _rectFor(_cardKey(word.id));
+    final srcKey =
+        ref.source == CardSource.waste ? _wasteKey : _cardKey(ref.word.id);
+    final src = _rectFor(srcKey);
     final dst = _rectFor(_foundationKeys[target]);
     if (src == null || dst == null) {
-      _commitPlace(word, target);
+      _commitPlace(ref, target);
       return;
     }
     _sound.play(SoundFx.cardTap);
-    setState(() => _flyingWordId = word.id);
-    _spawnFlyingCard(word, src, dst, () {
+    setState(() => _flyingWordId = ref.word.id);
+    _spawnFlyingCard(ref.word, src, dst, () {
       if (!mounted) return;
       setState(() => _flyingWordId = null);
-      _commitPlace(word, target);
+      _commitPlace(ref, target);
     });
   }
 
-  void _onDragAccept(WordItem word, int foundationIndex) {
+  void _onDragAccept(_CardRef ref, int foundationIndex) {
     if (_isComplete) return;
-    _commitPlace(word, foundationIndex);
+    _commitPlace(ref, foundationIndex);
   }
 
-  void _commitPlace(WordItem word, int foundationIndex) {
-    final result = _engine.tryPlace(word, foundationIndex);
+  void _commitPlace(_CardRef ref, int foundationIndex) {
+    final result = ref.source == CardSource.waste
+        ? _engine.playFromWaste(foundationIndex)
+        : _engine.playFromTableau(ref.column, foundationIndex);
     if (!result.accepted) {
       _sound.play(SoundFx.wrong);
       _rejectFeedback();
@@ -201,6 +258,15 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     }
 
     if (_engine.isWon) _handleWin();
+  }
+
+  void _drawStock() {
+    if (_isComplete || _flyingWordId != null) return;
+    if (_engine.drawFromStock()) {
+      _sound.play(SoundFx.cardTap);
+      _haptic(HapticFeedback.selectionClick);
+      setState(() => _hintedWordId = null);
+    }
   }
 
   void _flashCombo(int combo) {
@@ -268,7 +334,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     }
     final move = _engine.suggestMove();
     if (move == null) {
-      _showSnack('لا توجد حركات متاحة');
+      _showSnack('اسحب من مجموعة الأوراق');
       return;
     }
     final spent = await widget.playerService.spendCoins(cost);
@@ -321,11 +387,13 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
         onReplay: () {
           Navigator.pop(context);
           _initLevel();
+          _flyCoinsToBadge();
         },
         onNext: () {
           Navigator.pop(context);
           setState(() => _levelIndex = isLastLevel ? 0 : _levelIndex + 1);
-          _initLevel();
+          _initLevel(showIntro: true);
+          _flyCoinsToBadge();
         },
         onHome: () {
           Navigator.pop(context);
@@ -368,25 +436,26 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                   bestCombo: _engine.bestCombo,
                   elapsed: _elapsed,
                   completed: _engine.completedCount,
-                  total: kSolitaireColumns,
+                  total: kTableauColumns,
                   coins: widget.playerService.coins,
                   isDaily: widget.session.isDaily,
+                  coinKey: _coinKey,
+                  onBack: () => Navigator.of(context).maybePop(),
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
                     child: Column(
                       children: [
-                        const SizedBox(height: 4),
                         _FoundationsRow(
                           foundations: _engine.foundations,
                           level: _level,
                           flashIndex: _flashFoundationIndex,
                           slotKeys: _foundationKeys,
-                          canAccept: (word, i) => _engine.canPlace(word, i),
+                          canAccept: (ref, i) => _engine.canPlace(ref.word, i),
                           onAccept: _onDragAccept,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8),
                         Expanded(
                           child: AnimatedBuilder(
                             animation: _shakeController,
@@ -408,21 +477,32 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                               flyingWordId: _flyingWordId,
                               dealAnimation: _dealController,
                               cardKeyFor: _cardKey,
-                              onTapFront: _tapPlace,
+                              onTapTop: _tapPlace,
                               onDragStarted: () => _sound.play(SoundFx.cardTap),
                               enabled: !_isComplete,
                             ),
                           ),
                         ),
+                        const SizedBox(height: 8),
+                        _StockWasteBar(
+                          stockCount: _engine.stockCount,
+                          wasteTop: _engine.wasteTop,
+                          wasteKey: _wasteKey,
+                          flyingWordId: _flyingWordId,
+                          hintedWordId: _hintedWordId,
+                          canUndo: _engine.canUndo,
+                          enabled: !_isComplete,
+                          onDrawStock: _drawStock,
+                          onTapWaste: _tapPlace,
+                          onWasteDragStarted: () =>
+                              _sound.play(SoundFx.cardTap),
+                          onHint: _hint,
+                          onUndo: _undo,
+                          onShuffle: _shuffle,
+                        ),
                       ],
                     ),
                   ),
-                ),
-                _SolitaireBottomBar(
-                  onHint: _hint,
-                  onUndo: _undo,
-                  onShuffle: _shuffle,
-                  canUndo: _engine.canUndo && !_isComplete,
                 ),
               ],
             ),
@@ -446,7 +526,6 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     );
   }
 }
-
 // ---------------------------------------------------------------------------
 // Header
 // ---------------------------------------------------------------------------
@@ -462,6 +541,8 @@ class _SolitaireHeader extends StatelessWidget {
     required this.total,
     required this.coins,
     required this.isDaily,
+    required this.onBack,
+    required this.coinKey,
   });
 
   final Level level;
@@ -473,6 +554,8 @@ class _SolitaireHeader extends StatelessWidget {
   final int total;
   final int coins;
   final bool isDaily;
+  final VoidCallback onBack;
+  final GlobalKey coinKey;
 
   String get _time {
     final m = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -483,25 +566,28 @@ class _SolitaireHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
       child: GlassContainer(
         radius: GameRadii.xl,
-        blur: 16,
-        tintOpacity: 0.16,
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        blur: 18,
+        tintOpacity: 0.18,
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
         child: Column(
           children: [
             Row(
               children: [
+                _CircleIconButton(
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  onTap: onBack,
+                ),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (isDaily)
                         Container(
-                          margin: const EdgeInsets.only(bottom: 3),
+                          margin: const EdgeInsets.only(bottom: 2),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 3),
+                              horizontal: 10, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.28),
                             borderRadius: BorderRadius.circular(GameRadii.pill),
@@ -511,7 +597,7 @@ class _SolitaireHeader extends StatelessWidget {
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
-                              fontSize: 11,
+                              fontSize: 10,
                             ),
                           ),
                         ),
@@ -522,6 +608,7 @@ class _SolitaireHeader extends StatelessWidget {
                         style: GameTextStyles.title.copyWith(
                           color: Colors.white,
                           fontSize: 19,
+                          letterSpacing: 0.3,
                           shadows: const [
                             Shadow(
                                 color: Color(0x66000000),
@@ -533,22 +620,20 @@ class _SolitaireHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                AnimatedCoinBadge(count: coins),
+                AnimatedCoinBadge(key: coinKey, count: coins),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _MiniStat(icon: Icons.timer_outlined, label: _time),
-                const SizedBox(width: 8),
                 _MiniStat(icon: Icons.swipe_rounded, label: '$moves'),
-                const SizedBox(width: 8),
                 _MiniStat(
                   icon: Icons.bolt_rounded,
                   label: '×$bestCombo',
                   tint: GameColors.gold,
                 ),
-                const SizedBox(width: 8),
                 _MiniStat(
                   icon: Icons.close_rounded,
                   label: '$mistakes',
@@ -556,9 +641,47 @@ class _SolitaireHeader extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _LevelProgressBar(value: total == 0 ? 0 : completed / total),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CircleIconButton extends StatefulWidget {
+  const _CircleIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  State<_CircleIconButton> createState() => _CircleIconButtonState();
+}
+
+class _CircleIconButtonState extends State<_CircleIconButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.9 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.22),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+          ),
+          child: Icon(widget.icon, color: Colors.white, size: 17),
         ),
       ),
     );
@@ -610,7 +733,7 @@ class _LevelProgressBar extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         return Container(
-          height: 12,
+          height: 11,
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.22),
             borderRadius: BorderRadius.circular(GameRadii.pill),
@@ -709,8 +832,8 @@ class _FoundationsRow extends StatelessWidget {
   final Level level;
   final int? flashIndex;
   final List<GlobalKey> slotKeys;
-  final bool Function(WordItem word, int index) canAccept;
-  final void Function(WordItem word, int index) onAccept;
+  final bool Function(_CardRef ref, int index) canAccept;
+  final void Function(_CardRef ref, int index) onAccept;
 
   @override
   Widget build(BuildContext context) {
@@ -718,8 +841,8 @@ class _FoundationsRow extends StatelessWidget {
       children: List.generate(foundations.length, (i) {
         return Expanded(
           child: Padding(
-            padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
-            child: DragTarget<WordItem>(
+            padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
+            child: DragTarget<_CardRef>(
               onWillAcceptWithDetails: (_) => true,
               onAcceptWithDetails: (details) => onAccept(details.data, i),
               builder: (context, candidate, rejected) {
@@ -760,16 +883,24 @@ class _FoundationSlot extends StatefulWidget {
 }
 
 class _FoundationSlotState extends State<_FoundationSlot>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _bounce;
+  late final AnimationController _shimmer;
+
+  static const double _slotHeight = 82;
 
   @override
   void initState() {
     super.initState();
     _bounce = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
+      duration: const Duration(milliseconds: 460),
     );
+    _shimmer = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+    if (widget.foundation.isComplete) _shimmer.repeat();
   }
 
   @override
@@ -778,11 +909,17 @@ class _FoundationSlotState extends State<_FoundationSlot>
     if (widget.foundation.cards.length > oldWidget.foundation.cards.length) {
       _bounce.forward(from: 0);
     }
+    if (widget.foundation.isComplete && !_shimmer.isAnimating) {
+      _shimmer.repeat();
+    } else if (!widget.foundation.isComplete && _shimmer.isAnimating) {
+      _shimmer.stop();
+    }
   }
 
   @override
   void dispose() {
     _bounce.dispose();
+    _shimmer.dispose();
     super.dispose();
   }
 
@@ -791,7 +928,7 @@ class _FoundationSlotState extends State<_FoundationSlot>
     return AnimatedBuilder(
       animation: _bounce,
       builder: (context, child) {
-        final pop = 1 + math.sin(_bounce.value * math.pi) * 0.12;
+        final pop = 1 + math.sin(_bounce.value * math.pi) * 0.14;
         return Transform.scale(scale: pop, child: child);
       },
       child: _buildSlot(),
@@ -804,41 +941,62 @@ class _FoundationSlotState extends State<_FoundationSlot>
         ? null
         : widget.level.categoryById(foundation.categoryId!);
 
-    if (category == null) {
-      final borderColor = widget.invalidHover
-          ? GameColors.red
-          : Colors.white.withValues(alpha: widget.highlighted ? 0.9 : 0.4);
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        height: 84,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: widget.highlighted ? 0.32 : 0.14),
-          borderRadius: BorderRadius.circular(GameRadii.md),
-          border: Border.all(
-            color: borderColor,
-            width: widget.highlighted || widget.invalidHover ? 2.5 : 1.5,
-          ),
-          boxShadow: widget.highlighted
-              ? GameShadows.glow(Colors.white, opacity: 0.35)
-              : null,
-        ),
-        child: Center(
-          child: Icon(
-            Icons.workspace_premium_rounded,
-            color: Colors.white.withValues(alpha: 0.7),
-            size: 28,
-          ),
-        ),
-      );
-    }
+    if (category == null) return _emptySlot();
+    if (foundation.isComplete) return _completedSlot(category);
+    return _inProgressSlot(category, foundation);
+  }
 
-    final gradient = GameGradients.fromColor(category.color);
+  Widget _emptySlot() {
+    final borderColor = widget.invalidHover
+        ? GameColors.red
+        : Colors.white.withValues(alpha: widget.highlighted ? 0.95 : 0.45);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
-      height: 84,
+      height: _slotHeight,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: widget.highlighted ? 0.30 : 0.13),
+            Colors.white.withValues(alpha: widget.highlighted ? 0.16 : 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        border: Border.all(
+          color: borderColor,
+          width: widget.highlighted || widget.invalidHover ? 2.5 : 1.5,
+        ),
+        boxShadow: widget.highlighted
+            ? GameShadows.glow(Colors.white, opacity: 0.4)
+            : null,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_rounded,
+              color: Colors.white.withValues(alpha: 0.85), size: 22),
+          const SizedBox(height: 2),
+          Text(
+            'ضع هنا',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _inProgressSlot(Category category, Foundation foundation) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      height: _slotHeight,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
-        gradient: gradient,
+        gradient: GameGradients.fromColor(category.color),
         borderRadius: BorderRadius.circular(GameRadii.md),
         border: Border.all(
           color: widget.invalidHover
@@ -848,57 +1006,137 @@ class _FoundationSlotState extends State<_FoundationSlot>
                   : Colors.white.withValues(alpha: 0.4)),
           width: widget.highlighted || widget.invalidHover ? 2.5 : 1,
         ),
-        boxShadow: foundation.isComplete
-            ? GameShadows.glow(category.color, opacity: 0.6)
-            : GameShadows.card,
+        boxShadow: GameShadows.card,
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            category.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 12.5,
-              height: 1.1,
-              shadows: [
-                Shadow(
-                    color: Color(0x55000000),
-                    blurRadius: 3,
-                    offset: Offset(0, 1)),
+      child: _slotContent(
+        name: category.name,
+        badge: '${foundation.cards.length}/$kCardsPerCategory',
+        gold: false,
+      ),
+    );
+  }
+
+  Widget _completedSlot(Category category) {
+    return AnimatedBuilder(
+      animation: _shimmer,
+      builder: (context, child) {
+        final glow = 0.42 + math.sin(_shimmer.value * math.pi * 2) * 0.22;
+        return Container(
+          height: _slotHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: GameGradients.gold,
+            borderRadius: BorderRadius.circular(GameRadii.md),
+            border: Border.all(color: const Color(0xFFFFF1C2), width: 2),
+            boxShadow: GameShadows.glow(GameColors.gold, opacity: glow),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(GameRadii.md - 2),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(painter: _ShimmerPainter(_shimmer.value)),
+                ),
+                Center(child: child),
               ],
             ),
           ),
-          const SizedBox(height: 5),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(GameRadii.pill),
-            ),
-            child: Text(
-              foundation.isComplete
-                  ? '✓ مكتمل'
-                  : '${foundation.cards.length}/$kSolitaireCardsPerColumn',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 11,
-              ),
+        );
+      },
+      child: _slotContent(name: category.name, badge: 'مكتمل', gold: true),
+    );
+  }
+
+  Widget _slotContent({
+    required String name,
+    required String badge,
+    required bool gold,
+  }) {
+    final onColor = gold ? const Color(0xFF6E4A00) : Colors.white;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (gold) ...[
+          Icon(Icons.emoji_events_rounded, color: onColor, size: 18),
+          const SizedBox(height: 2),
+        ],
+        Text(
+          name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: onColor,
+            fontWeight: FontWeight.w800,
+            fontSize: 12.5,
+            height: 1.1,
+            shadows: gold
+                ? null
+                : const [
+                    Shadow(
+                        color: Color(0x55000000),
+                        blurRadius: 3,
+                        offset: Offset(0, 1)),
+                  ],
+          ),
+        ),
+        const SizedBox(height: 5),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: gold ? 0.55 : 0.3),
+            borderRadius: BorderRadius.circular(GameRadii.pill),
+          ),
+          child: Text(
+            gold ? 'مكتمل ✓' : badge,
+            style: TextStyle(
+              color: onColor,
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
+/// A diagonal light band that sweeps across completed (gold) foundations.
+class _ShimmerPainter extends CustomPainter {
+  _ShimmerPainter(this.t);
+
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dx = (t * 1.8 - 0.4) * size.width;
+    final bandWidth = size.width * 0.45;
+    final rect = Rect.fromLTWH(
+        dx - bandWidth / 2, -size.height, bandWidth, size.height * 3);
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.0),
+          Colors.white.withValues(alpha: 0.5),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+      ).createShader(rect);
+    canvas
+      ..save()
+      ..translate(dx, 0)
+      ..rotate(0.35)
+      ..translate(-dx, 0)
+      ..drawRect(rect, paint)
+      ..restore();
+  }
+
+  @override
+  bool shouldRepaint(_ShimmerPainter oldDelegate) => oldDelegate.t != t;
+}
 // ---------------------------------------------------------------------------
-// Tableau (columns of cards)
+// Tableau (staircase columns of overlapping cards)
 // ---------------------------------------------------------------------------
 
 class _Tableau extends StatelessWidget {
@@ -909,31 +1147,41 @@ class _Tableau extends StatelessWidget {
     required this.flyingWordId,
     required this.dealAnimation,
     required this.cardKeyFor,
-    required this.onTapFront,
+    required this.onTapTop,
     required this.onDragStarted,
     required this.enabled,
   });
 
-  final List<List<WordItem>> columns;
+  final List<List<TableauCard>> columns;
   final String? hintedWordId;
   final String? flyingWordId;
   final Animation<double> dealAnimation;
   final GlobalKey Function(String id) cardKeyFor;
-  final ValueChanged<WordItem> onTapFront;
+  final ValueChanged<_CardRef> onTapTop;
   final VoidCallback onDragStarted;
   final bool enabled;
+
+  static const int _maxStack = 4; // longest column in the 1-2-3-4 deal
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 12.0;
+        const gap = 8.0;
+        final maxH = constraints.maxHeight;
         final cardWidth =
             (constraints.maxWidth - gap * (columns.length - 1)) / columns.length;
-        final cardHeight = math.min(cardWidth * 1.36, 108.0);
-        final peek = cardHeight * 0.36;
-        final columnHeight =
-            cardHeight + peek * (kSolitaireCardsPerColumn - 1);
+
+        var cardHeight = cardWidth * 1.42;
+        var peek = (maxH - cardHeight) / (_maxStack - 1);
+        peek = peek.clamp(cardHeight * 0.22, cardHeight * 0.40);
+        var columnHeight = cardHeight + peek * (_maxStack - 1);
+        if (columnHeight > maxH) {
+          final scale = maxH / columnHeight;
+          cardHeight *= scale;
+          peek *= scale;
+          columnHeight = maxH;
+        }
 
         var globalIndex = 0;
         return Align(
@@ -943,33 +1191,37 @@ class _Tableau extends StatelessWidget {
             children: List.generate(columns.length, (i) {
               final baseIndex = globalIndex;
               globalIndex += columns[i].length;
+              final column = columns[i];
               return Padding(
                 padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
                 child: SizedBox(
                   width: cardWidth,
                   height: columnHeight,
-                  child: columns[i].isEmpty
+                  child: column.isEmpty
                       ? _EmptyColumnSlot(height: cardHeight)
                       : Stack(
-                          children:
-                              List.generate(columns[i].length, (index) {
-                            final card = columns[i][index];
-                            final isFront = index == columns[i].length - 1;
+                          clipBehavior: Clip.none,
+                          children: List.generate(column.length, (index) {
+                            final card = column[index];
+                            final isTop = index == column.length - 1;
                             return Positioned(
+                              key: ValueKey(card.word.id),
                               top: index * peek,
                               left: 0,
                               right: 0,
-                              child: _CardTile(
-                                word: card,
-                                boxKey: isFront ? cardKeyFor(card.id) : null,
+                              child: _TableauCardWidget(
+                                card: card,
+                                faceUp: card.faceUp,
+                                column: i,
+                                isTop: isTop,
+                                boxKey: isTop ? cardKeyFor(card.word.id) : null,
                                 width: cardWidth,
                                 height: cardHeight,
-                                isFront: isFront,
-                                isHinted: card.id == hintedWordId,
-                                isFlying: card.id == flyingWordId,
+                                isHinted: card.word.id == hintedWordId,
+                                isFlying: card.word.id == flyingWordId,
                                 entranceIndex: baseIndex + index,
                                 dealAnimation: dealAnimation,
-                                onTapFront: onTapFront,
+                                onTapTop: onTapTop,
                                 onDragStarted: onDragStarted,
                                 enabled: enabled,
                               ),
@@ -996,67 +1248,103 @@ class _EmptyColumnSlot extends StatelessWidget {
     return Container(
       height: height,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: Colors.black.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(GameRadii.md),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1.5),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.16),
+          width: 1.4,
+        ),
       ),
       child: Center(
         child: Icon(
           Icons.check_circle_outline_rounded,
-          color: Colors.white.withValues(alpha: 0.35),
-          size: 24,
+          color: Colors.white.withValues(alpha: 0.3),
+          size: 22,
         ),
       ),
     );
   }
 }
 
-class _CardTile extends StatefulWidget {
-  const _CardTile({
-    required this.word,
+class _TableauCardWidget extends StatefulWidget {
+  const _TableauCardWidget({
+    required this.card,
+    required this.faceUp,
+    required this.column,
+    required this.isTop,
     required this.boxKey,
     required this.width,
     required this.height,
-    required this.isFront,
     required this.isHinted,
     required this.isFlying,
     required this.entranceIndex,
     required this.dealAnimation,
-    required this.onTapFront,
+    required this.onTapTop,
     required this.onDragStarted,
     required this.enabled,
   });
 
-  final WordItem word;
+  final TableauCard card;
+
+  /// Captured by value so a reveal (false → true) can be detected in
+  /// [State.didUpdateWidget] even though the underlying [TableauCard] is mutated
+  /// in place by the engine.
+  final bool faceUp;
+  final int column;
+  final bool isTop;
   final GlobalKey? boxKey;
   final double width;
   final double height;
-  final bool isFront;
   final bool isHinted;
   final bool isFlying;
   final int entranceIndex;
   final Animation<double> dealAnimation;
-  final ValueChanged<WordItem> onTapFront;
+  final ValueChanged<_CardRef> onTapTop;
   final VoidCallback onDragStarted;
   final bool enabled;
 
   @override
-  State<_CardTile> createState() => _CardTileState();
+  State<_TableauCardWidget> createState() => _TableauCardWidgetState();
 }
 
-class _CardTileState extends State<_CardTile> {
+class _TableauCardWidgetState extends State<_TableauCardWidget>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _flip;
   bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _flip = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+      value: 1, // already resolved (no flip in progress)
+    );
+  }
+
+  @override
+  void didUpdateWidget(_TableauCardWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A previously hidden card was just revealed → play a flip.
+    if (!oldWidget.faceUp && widget.faceUp) {
+      _flip.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _flip.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final sized = SizedBox(
       width: widget.width,
       height: widget.height,
-      child: _CardFace(
-        word: widget.word,
-        isFront: widget.isFront,
-        isHinted: widget.isHinted,
+      child: AnimatedBuilder(
+        animation: _flip,
+        builder: (context, _) => _flipFace(),
       ),
     );
 
@@ -1064,12 +1352,14 @@ class _CardTileState extends State<_CardTile> {
       return Opacity(opacity: 0, child: sized);
     }
 
-    Widget content;
-    if (!widget.isFront || !widget.enabled) {
-      content = sized;
-    } else {
-      content = Draggable<WordItem>(
-        data: widget.word,
+    final interactive = widget.isTop && widget.faceUp && widget.enabled;
+
+    Widget content = sized;
+    if (interactive) {
+      final ref =
+          _CardRef(CardSource.tableau, widget.column, widget.card.word);
+      content = Draggable<_CardRef>(
+        data: ref,
         dragAnchorStrategy: childDragAnchorStrategy,
         onDragStarted: widget.onDragStarted,
         feedback: Material(
@@ -1078,48 +1368,180 @@ class _CardTileState extends State<_CardTile> {
             width: widget.width,
             height: widget.height,
             child: _CardFace(
-              word: widget.word,
+              word: widget.card.word,
               isFront: true,
               isHinted: widget.isHinted,
               elevated: true,
             ),
           ),
         ),
-        childWhenDragging: Opacity(opacity: 0.3, child: sized),
+        childWhenDragging: Opacity(opacity: 0.28, child: sized),
         child: GestureDetector(
           onTapDown: (_) => setState(() => _pressed = true),
           onTapUp: (_) {
             setState(() => _pressed = false);
-            widget.onTapFront(widget.word);
+            widget.onTapTop(ref);
           },
           onTapCancel: () => setState(() => _pressed = false),
           child: KeyedSubtree(key: widget.boxKey, child: sized),
         ),
+      );
+      content = AnimatedScale(
+        scale: _pressed ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        child: content,
       );
     }
 
     return AnimatedBuilder(
       animation: widget.dealAnimation,
       builder: (context, child) {
-        final start = (widget.entranceIndex / 26).clamp(0.0, 0.6);
+        final start = (widget.entranceIndex / 30).clamp(0.0, 0.6);
         final v = widget.dealAnimation.value;
-        final local =
-            ((v - start) / 0.4).clamp(0.0, 1.0);
-        final scale = 0.7 + Curves.easeOutBack.transform(local) * 0.3;
-        final opacity = Curves.easeOut.transform(local.clamp(0.0, 1.0));
+        final local = ((v - start) / 0.4).clamp(0.0, 1.0);
+        final scale = 0.72 + Curves.easeOutBack.transform(local) * 0.28;
+        final opacity = Curves.easeOut.transform(local);
+        final dy = (1 - local) * -26; // cards settle downward into place
         return Opacity(
           opacity: opacity,
-          child: Transform.scale(scale: scale, child: child),
+          child: Transform.translate(
+            offset: Offset(0, dy),
+            child: Transform.scale(scale: scale, child: child),
+          ),
         );
       },
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 110),
-        child: content,
+      child: content,
+    );
+  }
+
+  Widget _flipFace() {
+    final flipping = _flip.value < 1.0 && widget.faceUp;
+    if (!flipping) {
+      return widget.faceUp
+          ? _CardFace(
+              word: widget.card.word,
+              isFront: true,
+              isHinted: widget.isHinted,
+            )
+          : const _CardBack();
+    }
+    final t = _flip.value;
+    final angle = (1 - t) * math.pi;
+    final showBack = t < 0.5;
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..setEntry(3, 2, 0.001)
+        ..rotateY(angle),
+      child: showBack
+          ? const _CardBack()
+          : _CardFace(
+              word: widget.card.word,
+              isFront: true,
+              isHinted: widget.isHinted,
+            ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Premium green/gold card back
+// ---------------------------------------------------------------------------
+
+class _CardBack extends StatelessWidget {
+  const _CardBack();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x330B1B2B),
+              blurRadius: 8,
+              offset: Offset(0, 4),
+              spreadRadius: -2),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF12633A), Color(0xFF063D22)],
+            ),
+            border: Border.all(color: const Color(0xFFE9C25A), width: 1.6),
+            borderRadius: BorderRadius.circular(GameRadii.md),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(painter: _CardBackPainter()),
+              // Center emblem: a gold diamond with a small star.
+              Center(
+                child: Transform.rotate(
+                  angle: math.pi / 4,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      gradient: GameGradients.gold,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                          color: const Color(0xFFFFF1C2), width: 1.2),
+                      boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.4),
+                    ),
+                    child: Transform.rotate(
+                      angle: -math.pi / 4,
+                      child: const Icon(Icons.star_rounded,
+                          size: 15, color: Color(0xFF6E4A00)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
+
+/// Draws a subtle gold diagonal lattice + inset frame on the card back.
+class _CardBackPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = const Color(0x33E9C25A)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    const step = 12.0;
+    for (var x = -size.height; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), line);
+      canvas.drawLine(
+          Offset(x, size.height), Offset(x + size.height, 0), line);
+    }
+    final frame = Paint()
+      ..color = const Color(0x55E9C25A)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+    final inset = RRect.fromRectAndRadius(
+      Rect.fromLTWH(4, 4, size.width - 8, size.height - 8),
+      const Radius.circular(6),
+    );
+    canvas.drawRRect(inset, frame);
+  }
+
+  @override
+  bool shouldRepaint(_CardBackPainter oldDelegate) => false;
+}
+
+// ---------------------------------------------------------------------------
+// Card face
+// ---------------------------------------------------------------------------
 
 class _CardFace extends StatelessWidget {
   const _CardFace({
@@ -1142,74 +1564,523 @@ class _CardFace extends StatelessWidget {
 
     if (isHinted) {
       gradient = GameGradients.orange;
-      borderColor = Colors.white.withValues(alpha: 0.6);
+      borderColor = Colors.white.withValues(alpha: 0.7);
       textColor = Colors.white;
-    } else if (isFront) {
-      gradient = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFFFFFFFF), Color(0xFFEEF2F7)],
-      );
-      borderColor = const Color(0xFFE2E8F0);
-      textColor = GameColors.textPrimary;
     } else {
       gradient = const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Color(0xFFF7F9FB), Color(0xFFE7ECF2)],
+        colors: [Color(0xFFFFFFFF), Color(0xFFF3F6FA), Color(0xFFE7EDF4)],
+        stops: [0.0, 0.55, 1.0],
       );
-      borderColor = const Color(0xFFDCE3EB);
-      textColor = GameColors.textSecondary;
+      borderColor = Colors.white;
+      textColor = GameColors.textPrimary;
     }
 
-    final shadows = elevated
-        ? GameShadows.lifted
-        : (isFront ? GameShadows.card : GameShadows.soft);
+    final List<BoxShadow> shadows;
+    if (isHinted) {
+      shadows = GameShadows.glow(GameColors.orange, opacity: 0.55);
+    } else if (elevated) {
+      shadows = const [
+        BoxShadow(
+            color: Color(0x4D0B1B2B),
+            blurRadius: 28,
+            offset: Offset(0, 18),
+            spreadRadius: -2),
+        BoxShadow(
+            color: Color(0x1A0B1B2B), blurRadius: 6, offset: Offset(0, 2)),
+      ];
+    } else {
+      shadows = const [
+        BoxShadow(
+            color: Color(0x2E0B1B2B),
+            blurRadius: 14,
+            offset: Offset(0, 8),
+            spreadRadius: -3),
+        BoxShadow(
+            color: Color(0x140B1B2B), blurRadius: 3, offset: Offset(0, 1)),
+      ];
+    }
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: gradient,
         borderRadius: BorderRadius.circular(GameRadii.md),
-        border: Border.all(color: borderColor, width: 1),
-        boxShadow: isHinted
-            ? GameShadows.glow(GameColors.orange, opacity: 0.5)
-            : shadows,
+        boxShadow: shadows,
       ),
-      child: Stack(
-        children: [
-          // Glossy top sheen.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 22,
-              decoration: const BoxDecoration(
-                gradient: GameGradients.cardSheen,
-                borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(GameRadii.md)),
-              ),
-            ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            border: Border.all(color: borderColor, width: 1),
+            borderRadius: BorderRadius.circular(GameRadii.md),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Text(
-                word.text,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: GameTextStyles.cardLabel.copyWith(
-                  color: textColor,
-                  fontSize: 14.5,
-                  letterSpacing: 0.2,
-                  fontWeight: isFront ? FontWeight.w800 : FontWeight.w600,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.55),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.45],
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SizedBox(
+                  height: 18,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(gradient: GameGradients.cardSheen),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 10,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.06),
+                        Colors.black.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                child: Center(
+                  child: Text(
+                    word.text,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: GameTextStyles.cardLabel.copyWith(
+                      color: textColor,
+                      fontSize: 14,
+                      height: 1.15,
+                      letterSpacing: 0.1,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+// ---------------------------------------------------------------------------
+// Stock + waste + actions (bottom zone)
+// ---------------------------------------------------------------------------
+
+class _StockWasteBar extends StatelessWidget {
+  const _StockWasteBar({
+    required this.stockCount,
+    required this.wasteTop,
+    required this.wasteKey,
+    required this.flyingWordId,
+    required this.hintedWordId,
+    required this.canUndo,
+    required this.enabled,
+    required this.onDrawStock,
+    required this.onTapWaste,
+    required this.onWasteDragStarted,
+    required this.onHint,
+    required this.onUndo,
+    required this.onShuffle,
+  });
+
+  final int stockCount;
+  final WordItem? wasteTop;
+  final GlobalKey wasteKey;
+  final String? flyingWordId;
+  final String? hintedWordId;
+  final bool canUndo;
+  final bool enabled;
+  final VoidCallback onDrawStock;
+  final ValueChanged<_CardRef> onTapWaste;
+  final VoidCallback onWasteDragStarted;
+  final VoidCallback onHint;
+  final VoidCallback onUndo;
+  final VoidCallback onShuffle;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardW = (constraints.maxWidth * 0.155).clamp(46.0, 64.0);
+        final cardH = cardW * 1.4;
+        return SizedBox(
+          height: cardH + 6,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _StockPile(
+                count: stockCount,
+                width: cardW,
+                height: cardH,
+                enabled: enabled,
+                onTap: onDrawStock,
+              ),
+              const SizedBox(width: 10),
+              _WastePile(
+                key: ValueKey('waste-${wasteTop?.id ?? 'empty'}'),
+                boxKey: wasteKey,
+                word: wasteTop,
+                width: cardW,
+                height: cardH,
+                isHinted: wasteTop != null && wasteTop!.id == hintedWordId,
+                isFlying: wasteTop != null && wasteTop!.id == flyingWordId,
+                enabled: enabled,
+                onTap: onTapWaste,
+                onDragStarted: onWasteDragStarted,
+              ),
+              const Spacer(),
+              _RoundAction(
+                icon: Icons.lightbulb_rounded,
+                gradient: GameGradients.orange,
+                enabled: enabled,
+                onTap: onHint,
+              ),
+              const SizedBox(width: 8),
+              _RoundAction(
+                icon: Icons.undo_rounded,
+                gradient: GameGradients.blue,
+                enabled: enabled && canUndo,
+                onTap: onUndo,
+              ),
+              const SizedBox(width: 8),
+              _RoundAction(
+                icon: Icons.shuffle_rounded,
+                gradient: GameGradients.green,
+                enabled: enabled,
+                onTap: onShuffle,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StockPile extends StatelessWidget {
+  const _StockPile({
+    required this.count,
+    required this.width,
+    required this.height,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final int count;
+  final double width;
+  final double height;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final layers = count == 0 ? 1 : math.min(count, 3);
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: width + 6,
+        height: height + 6,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (count == 0)
+              Positioned(
+                left: 3,
+                top: 3,
+                child: _StockEmpty(width: width, height: height),
+              )
+            else ...[
+              for (var i = layers - 1; i >= 0; i--)
+                Positioned(
+                  left: 3.0 + i * 2.0,
+                  top: 3.0 - i * 2.0,
+                  child: SizedBox(
+                    width: width,
+                    height: height,
+                    child: const _CardBack(),
+                  ),
+                ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF063D22),
+                    borderRadius: BorderRadius.circular(GameRadii.pill),
+                    border:
+                        Border.all(color: const Color(0xFFE9C25A), width: 1),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      color: Color(0xFFE9C25A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StockEmpty extends StatelessWidget {
+  const _StockEmpty({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        border: Border.all(
+          color: const Color(0xFFE9C25A).withValues(alpha: 0.6),
+          width: 1.4,
+        ),
+      ),
+      child: Icon(
+        Icons.refresh_rounded,
+        color: const Color(0xFFE9C25A).withValues(alpha: 0.85),
+        size: 24,
+      ),
+    );
+  }
+}
+
+class _WastePile extends StatefulWidget {
+  const _WastePile({
+    super.key,
+    required this.boxKey,
+    required this.word,
+    required this.width,
+    required this.height,
+    required this.isHinted,
+    required this.isFlying,
+    required this.enabled,
+    required this.onTap,
+    required this.onDragStarted,
+  });
+
+  final GlobalKey boxKey;
+  final WordItem? word;
+  final double width;
+  final double height;
+  final bool isHinted;
+  final bool isFlying;
+  final bool enabled;
+  final ValueChanged<_CardRef> onTap;
+  final VoidCallback onDragStarted;
+
+  @override
+  State<_WastePile> createState() => _WastePileState();
+}
+
+class _WastePileState extends State<_WastePile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _in;
+  bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _in = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    if (widget.word != null) _in.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _in.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.word == null) {
+      return _emptySlot();
+    }
+    final word = widget.word!;
+    final face = SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: _CardFace(word: word, isFront: true, isHinted: widget.isHinted),
+    );
+
+    if (widget.isFlying) {
+      return SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: Opacity(opacity: 0, child: face),
+      );
+    }
+
+    final ref = _CardRef(CardSource.waste, -1, word);
+    Widget child = Draggable<_CardRef>(
+      data: ref,
+      dragAnchorStrategy: childDragAnchorStrategy,
+      onDragStarted: widget.onDragStarted,
+      feedback: Material(
+        color: Colors.transparent,
+        child: SizedBox(
+          width: widget.width,
+          height: widget.height,
+          child: _CardFace(
+            word: word,
+            isFront: true,
+            isHinted: widget.isHinted,
+            elevated: true,
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.28, child: face),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) {
+          setState(() => _pressed = false);
+          if (widget.enabled) widget.onTap(ref);
+        },
+        onTapCancel: () => setState(() => _pressed = false),
+        child: KeyedSubtree(key: widget.boxKey, child: face),
+      ),
+    );
+
+    child = AnimatedScale(
+      scale: _pressed ? 0.94 : 1.0,
+      duration: const Duration(milliseconds: 110),
+      child: child,
+    );
+
+    return AnimatedBuilder(
+      animation: _in,
+      builder: (context, inner) {
+        final t = Curves.easeOutCubic.transform(_in.value);
+        final angle = (1 - t) * math.pi; // flips in from the stock
+        final showFace = t >= 0.5;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..rotateY(angle),
+          child: showFace
+              ? inner
+              : SizedBox(
+                  width: widget.width,
+                  height: widget.height,
+                  child: const _CardBack(),
+                ),
+        );
+      },
+      child: child,
+    );
+  }
+
+  Widget _emptySlot() {
+    return Container(
+      width: widget.width,
+      height: widget.height,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(GameRadii.md),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.18),
+          width: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundAction extends StatefulWidget {
+  const _RoundAction({
+    required this.icon,
+    required this.gradient,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Gradient gradient;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  State<_RoundAction> createState() => _RoundActionState();
+}
+
+class _RoundActionState extends State<_RoundAction> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapUp: widget.enabled
+          ? (_) {
+              setState(() => _pressed = false);
+              widget.onTap();
+            }
+          : null,
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.9 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        child: Opacity(
+          opacity: widget.enabled ? 1 : 0.4,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: widget.gradient,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 4)),
+              ],
+            ),
+            child: Icon(widget.icon, color: Colors.white, size: 22),
+          ),
+        ),
       ),
     );
   }
@@ -1262,8 +2133,8 @@ class _FlyingCardState extends State<_FlyingCard>
       builder: (context, _) {
         final t = Curves.easeInOutCubic.transform(_controller.value);
         final rect = Rect.lerp(widget.src, widget.dst, t)!;
-        final arc = -math.sin(t * math.pi) * 46; // gentle hop
-        final flip = t * math.pi * 2; // one full flip, lands face-up
+        final arc = -math.sin(t * math.pi) * 46;
+        final flip = t * math.pi * 2;
         return Positioned(
           left: rect.left,
           top: rect.top + arc,
@@ -1286,83 +2157,6 @@ class _FlyingCardState extends State<_FlyingCard>
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Bottom bar
-// ---------------------------------------------------------------------------
-
-class _SolitaireBottomBar extends StatelessWidget {
-  const _SolitaireBottomBar({
-    required this.onHint,
-    required this.onUndo,
-    required this.onShuffle,
-    required this.canUndo,
-  });
-
-  final VoidCallback onHint;
-  final VoidCallback onUndo;
-  final VoidCallback onShuffle;
-  final bool canUndo;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-      decoration: const BoxDecoration(
-        color: GameColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(GameRadii.xl)),
-        boxShadow: [
-          BoxShadow(
-              color: Color(0x22000000), blurRadius: 24, offset: Offset(0, -6)),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: PressableButton(
-                label: 'تلميح',
-                icon: Icons.lightbulb_rounded,
-                gradient: GameGradients.orange,
-                faceColor: GameColors.orange,
-                edgeColor: GameColors.orangeDark,
-                height: 54,
-                onPressed: onHint,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: PressableButton(
-                label: 'تراجع',
-                icon: Icons.undo_rounded,
-                gradient: canUndo ? GameGradients.blue : null,
-                faceColor: GameColors.blue,
-                edgeColor: GameColors.blueDark,
-                height: 54,
-                enabled: canUndo,
-                onPressed: canUndo ? onUndo : null,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: PressableButton(
-                label: 'خلط',
-                icon: Icons.shuffle_rounded,
-                gradient: GameGradients.green,
-                faceColor: GameColors.green,
-                edgeColor: GameColors.greenDark,
-                height: 54,
-                onPressed: onShuffle,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Victory sheet
 // ---------------------------------------------------------------------------
@@ -1493,6 +2287,7 @@ class _VictorySheetState extends State<VictorySheet>
               icon: Icons.arrow_back_rounded,
               gradient: GameGradients.green,
               height: 56,
+              pulseWhenReady: true,
               onPressed: widget.onNext,
             )
           else
@@ -1501,6 +2296,7 @@ class _VictorySheetState extends State<VictorySheet>
               icon: Icons.check_rounded,
               gradient: GameGradients.green,
               height: 56,
+              pulseWhenReady: true,
               onPressed: widget.isDaily ? widget.onHome : widget.onNext,
             ),
           const SizedBox(height: 12),
@@ -1606,3 +2402,194 @@ class _StatChip extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Coin-fly reward animation
+// ---------------------------------------------------------------------------
+
+class _CoinFly extends StatefulWidget {
+  const _CoinFly({
+    required this.origin,
+    required this.target,
+    required this.count,
+    required this.onDone,
+  });
+
+  final Offset origin;
+  final Offset target;
+  final int count;
+  final VoidCallback onDone;
+
+  @override
+  State<_CoinFly> createState() => _CoinFlyState();
+}
+
+class _CoinFlyState extends State<_CoinFly>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final List<Offset> _controls;
+  final _rng = math.Random();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..forward().then((_) => widget.onDone());
+    final mid = Offset(
+      (widget.origin.dx + widget.target.dx) / 2,
+      (widget.origin.dy + widget.target.dy) / 2,
+    );
+    _controls = List.generate(
+      widget.count,
+      (_) => mid +
+          Offset((_rng.nextDouble() - 0.5) * 220,
+              (_rng.nextDouble() - 0.5) * 150 - 40),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Offset _bezier(Offset p0, Offset p1, Offset p2, double t) {
+    final u = 1 - t;
+    return p0 * (u * u) + p1 * (2 * u * t) + p2 * (t * t);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final children = <Widget>[];
+          for (var i = 0; i < widget.count; i++) {
+            final start = (i / widget.count) * 0.3;
+            final local = ((_controller.value - start) / 0.7).clamp(0.0, 1.0);
+            if (local >= 1) continue;
+            final t = Curves.easeInOutCubic.transform(local);
+            final pos = _bezier(widget.origin, _controls[i], widget.target, t);
+            final scale = (local < 0.2 ? local / 0.2 : 1.0) * (1 - local * 0.25);
+            final opacity = local >= 0.88 ? (1 - (local - 0.88) / 0.12) : 1.0;
+            children.add(Positioned(
+              left: pos.dx - 14,
+              top: pos.dy - 14,
+              child: Opacity(
+                opacity: opacity.clamp(0.0, 1.0),
+                child: Transform.scale(scale: scale, child: _coin()),
+              ),
+            ));
+          }
+          return Stack(children: children);
+        },
+      ),
+    );
+  }
+
+  Widget _coin() {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        gradient: GameGradients.gold,
+        shape: BoxShape.circle,
+        boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.6),
+      ),
+      child: const Icon(Icons.monetization_on_rounded,
+          color: Color(0xFF7A5200), size: 20),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Level intro banner
+// ---------------------------------------------------------------------------
+
+class _LevelIntro extends StatefulWidget {
+  const _LevelIntro({required this.text, required this.onDone});
+
+  final String text;
+  final VoidCallback onDone;
+
+  @override
+  State<_LevelIntro> createState() => _LevelIntroState();
+}
+
+class _LevelIntroState extends State<_LevelIntro>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..forward().then((_) => widget.onDone());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final v = _controller.value;
+          double opacity;
+          double dx;
+          if (v < 0.2) {
+            final t = Curves.easeOut.transform(v / 0.2);
+            opacity = t;
+            dx = (1 - t) * 70;
+          } else if (v > 0.8) {
+            final t = (v - 0.8) / 0.2;
+            opacity = 1 - t;
+            dx = -t * 50;
+          } else {
+            opacity = 1;
+            dx = 0;
+          }
+          return Center(
+            child: Opacity(
+              opacity: opacity.clamp(0.0, 1.0),
+              child: Transform.translate(
+                offset: Offset(dx, 0),
+                child: _banner(),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _banner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 18),
+      decoration: BoxDecoration(
+        gradient: GameGradients.gold,
+        borderRadius: BorderRadius.circular(GameRadii.xl),
+        boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.6),
+      ),
+      child: Text(
+        widget.text,
+        style: GameTextStyles.display
+            .copyWith(color: const Color(0xFF6E4A00), fontSize: 30),
+      ),
+    );
+  }
+}
+
+
+
+
