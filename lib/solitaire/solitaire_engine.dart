@@ -148,15 +148,16 @@ class _Move {
 /// Pure, Flutter-free game logic for the strategic word-solitaire board.
 ///
 /// Rules:
-/// * Each foundation is **pre-labeled** with a category and starts **locked**.
-///   It only accepts its matching **category card** first (which unlocks it),
-///   then word cards of that category — in any order.
+/// * Foundations start **empty and generic**. The first card placed must be a
+///   **category card**, which locks that foundation to its category; it then
+///   accepts word cards of that category — in any order.
 /// * Only the **top** card of each column is face-up; removing it flips the one
 ///   beneath. A card can be moved from a column top or the waste top.
-/// * A card can only go to a **matching foundation**. An **empty column**
-///   accepts **only a category card** (a scarce relocation buffer).
+/// * A card can go to a **matching foundation**, or in the tableau: **any** card
+///   onto an **empty column**, or a word onto a **same-category** column top.
 /// * The **stock** draws to the **waste**; when empty it recycles.
 ///
+/// The whole deck is shuffled and dealt round-robin, so columns mix categories.
 /// Every dealt level is verified **greedily solvable** before use.
 class SolitaireEngine {
   SolitaireEngine(this.level, {Random? random, RoundSpec? spec})
@@ -246,80 +247,122 @@ class SolitaireEngine {
 
   /// Deals a fresh, guaranteed-solvable layout and resets all state.
   ///
-  /// The board shape is driven by [spec]: deeper columns and buried category
-  /// cards make a round harder. Solvability is still verified before use.
+  /// The whole deck is fully shuffled and dealt **round-robin** across
+  /// [RoundSpec.columnCount] columns, so every column mixes categories and no
+  /// two deals look alike. Only each column's top card is face-up. Harder specs
+  /// use deeper columns and push some category cards into the stock, forcing the
+  /// player to dig them out or draw for them.
+  ///
+  /// Solvability is verified with a conservative greedy playout (foundation +
+  /// stock only). If no shuffle passes within the attempt budget, a
+  /// guaranteed-solvable mixed fallback is used.
   void deal() {
-    final columnsCount = categoryCount; // one column per category
-    // At least one card per category stays in the stock so drawing matters.
-    final depth = _spec.columnDepth.clamp(2, kWordsPerCategory);
+    final columnsCount = _spec.columnCount.clamp(3, 8);
+    final depth = _spec.columnDepth.clamp(2, 6);
+    final total = categoryCount + level.words.length;
+    // Reserve at least one card per category for the stock so drawing matters.
+    final maxTableau = (total - categoryCount).clamp(columnsCount, total);
+    final tableauCount = (columnsCount * depth).clamp(columnsCount, maxTableau);
 
-    for (var attempt = 0; attempt < 400; attempt++) {
+    for (var attempt = 0; attempt < 800; attempt++) {
       final deck = _buildDeck()..shuffle(_rng);
-      if (!_spec.buryCategoryCards) {
-        _biasCategoryCardsAccessible(deck, columnsCount, depth);
+      if (_spec.buryCategoryCards) {
+        _pushSomeCategoryCardsToStock(deck, tableauCount);
       }
-      final layout = _arrange(deck, columnsCount, depth);
+      final layout = _arrangeMixed(deck, columnsCount, tableauCount);
+      // Guarantee an opening move: always surface one category card face-up.
+      _ensureCategoryTop(layout.$1, layout.$2);
       if (_greedySolvable(layout.$1, layout.$2)) {
         _adopt(layout.$1, layout.$2);
         return;
       }
     }
-    // Fallback: category cards on top of every column → trivially reachable.
-    _adopt(_easyLayout(), <GameCard>[]);
+    final fb = _solvableFallback(columnsCount, tableauCount);
+    _ensureCategoryTop(fb.$1, fb.$2);
+    _adopt(fb.$1, fb.$2);
   }
 
-  /// Moves category cards toward positions that will end up face-up (column
-  /// tops) to make early levels gentler.
-  void _biasCategoryCardsAccessible(
-      List<GameCard> deck, int columnsCount, int depth) {
-    // The last card dealt to each column (the top) is face-up. In a
-    // column-by-column deal, those are indices depth-1, 2*depth-1, ...
-    final topIndices = <int>[
-      for (var c = 0; c < columnsCount; c++)
-        ((c + 1) * depth - 1).clamp(0, deck.length - 1),
-    ];
+  /// If no column currently shows a category card on top, surface one — swapping
+  /// a buried category card to a column top, or pulling one up from the stock.
+  /// Making a category card *more* accessible never breaks solvability.
+  void _ensureCategoryTop(
+      List<List<TableauCard>> cols, List<GameCard> stock) {
+    bool isCatTop(List<TableauCard> c) => c.isNotEmpty && c.last.card.isCategory;
+    if (cols.any(isCatTop)) return;
+
+    for (final col in cols) {
+      if (col.isEmpty) continue;
+      final idx = col.indexWhere((t) => t.card.isCategory);
+      if (idx >= 0) {
+        final catCard = col[idx].card;
+        final topCard = col[col.length - 1].card;
+        col[idx] = TableauCard(topCard, faceUp: false);
+        col[col.length - 1] = TableauCard(catCard, faceUp: true);
+        return;
+      }
+    }
+    // No category card anywhere in the tableau — pull one up from the stock.
+    final sIdx = stock.indexWhere((c) => c.isCategory);
+    if (sIdx < 0) return;
+    final col = cols.firstWhere((c) => c.isNotEmpty, orElse: () => <TableauCard>[]);
+    if (col.isEmpty) return;
+    final displaced = col[col.length - 1].card;
+    col[col.length - 1] = TableauCard(stock[sIdx], faceUp: true);
+    stock[sIdx] = displaced;
+  }
+
+  /// Moves about half of the tableau-bound category cards into the stock region
+  /// (`>= tableauCount`), so several categories can't be unlocked until drawn.
+  void _pushSomeCategoryCardsToStock(List<GameCard> deck, int tableauCount) {
+    if (tableauCount >= deck.length) return; // no stock room
     final catIndices = [
-      for (var i = 0; i < deck.length; i++)
+      for (var i = 0; i < tableauCount; i++)
         if (deck[i].isCategory) i,
     ];
-    for (var k = 0; k < catIndices.length && k < topIndices.length; k++) {
+    final moveCount = (catIndices.length / 2).ceil();
+    for (var k = 0; k < moveCount; k++) {
       final from = catIndices[k];
-      final to = topIndices[k];
+      final to = tableauCount + _rng.nextInt(deck.length - tableauCount);
       final tmp = deck[to];
       deck[to] = deck[from];
       deck[from] = tmp;
     }
   }
 
-  /// Splits [deck] into columns (top card face-up) and a face-down stock.
-  (List<List<TableauCard>>, List<GameCard>) _arrange(
-      List<GameCard> deck, int columnsCount, int depth) {
-    final tableauTarget =
-        (columnsCount * depth).clamp(0, deck.length);
-    final cols =
-        List.generate(columnsCount, (_) => <TableauCard>[]);
-    var idx = 0;
-    for (var c = 0; c < columnsCount && idx < tableauTarget; c++) {
-      for (var r = 0; r < depth && idx < tableauTarget; r++) {
-        cols[c].add(TableauCard(deck[idx], faceUp: false));
-        idx++;
-      }
-      if (cols[c].isNotEmpty) cols[c].last.faceUp = true;
+  /// Deals the first [tableauCount] cards round-robin across [columnsCount]
+  /// columns (each column's top face-up); the rest become the face-down stock.
+  (List<List<TableauCard>>, List<GameCard>) _arrangeMixed(
+      List<GameCard> deck, int columnsCount, int tableauCount) {
+    final cols = List.generate(columnsCount, (_) => <TableauCard>[]);
+    for (var i = 0; i < tableauCount; i++) {
+      cols[i % columnsCount].add(TableauCard(deck[i], faceUp: false));
     }
-    final stockCards = deck.sublist(idx);
-    return (cols, stockCards);
+    for (final col in cols) {
+      if (col.isNotEmpty) col.last.faceUp = true;
+    }
+    return (cols, deck.sublist(tableauCount));
   }
 
-  List<List<TableauCard>> _easyLayout() {
-    // Every category card sits face-up on its own column; words fill the stock.
-    final cats = [for (final c in level.categories) GameCard.category(c)];
-    final cols = [
-      for (final c in cats) [TableauCard(c, faceUp: true)],
-    ];
-    stock
-      ..clear()
-      ..addAll(level.words.map(GameCard.word).toList()..shuffle(_rng));
-    return cols;
+  /// A guaranteed greedy-solvable but still mixed layout: every category card is
+  /// placed in the (shuffled) stock while words are spread round-robin across
+  /// the columns. Drawing through the stock always unlocks every category.
+  (List<List<TableauCard>>, List<GameCard>) _solvableFallback(
+      int columnsCount, int tableauCount) {
+    final words = [for (final w in level.words) GameCard.word(w)]
+      ..shuffle(_rng);
+    final cats = [for (final c in level.categories) GameCard.category(c)]
+      ..shuffle(_rng);
+    final tCount = tableauCount.clamp(0, words.length);
+    final cols = List.generate(columnsCount, (_) => <TableauCard>[]);
+    for (var i = 0; i < tCount; i++) {
+      cols[i % columnsCount].add(TableauCard(words[i], faceUp: false));
+    }
+    for (final col in cols) {
+      if (col.isNotEmpty) col.last.faceUp = true;
+    }
+    final stockCards = <GameCard>[...words.sublist(tCount), ...cats]
+      ..shuffle(_rng);
+    return (cols, stockCards);
   }
 
   void _adopt(List<List<TableauCard>> cols, List<GameCard> stockCards) {
@@ -359,12 +402,13 @@ class SolitaireEngine {
         f.wordCount < kWordsPerCategory;
   }
 
-  /// Empty columns accept only category cards; non-empty columns accept a word
-  /// card whose category matches the (face-up) top card — a real tableau build.
+  /// Empty columns accept **any** card (a free relocation buffer); non-empty
+  /// columns accept a word card whose category matches the (face-up) top card —
+  /// a real same-category tableau build.
   bool canPlaceOnColumn(GameCard card, int columnIndex) {
     if (columnIndex < 0 || columnIndex >= columns.length) return false;
     final column = columns[columnIndex];
-    if (column.isEmpty) return card.isCategory;
+    if (column.isEmpty) return true;
     final top = column.last;
     if (!top.faceUp) return false;
     return !card.isCategory && card.categoryId == top.card.categoryId;
@@ -420,8 +464,8 @@ class SolitaireEngine {
         foundationIndex: foundationIndex, revealedCard: revealed);
   }
 
-  /// Moves the top card of [source]/[fromColumn] onto column [toCol]: a category
-  /// card onto an empty column, or a word onto a same-category top.
+  /// Moves the top card of [source]/[fromColumn] onto column [toCol]: any card
+  /// onto an empty column, or a word onto a same-category top.
   PlaceResult moveToColumn(CardSource source, int fromColumn, int toCol) {
     if (source == CardSource.tableau && fromColumn == toCol) {
       return const PlaceResult(PlaceOutcome.rejected);

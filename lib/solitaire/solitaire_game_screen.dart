@@ -276,7 +276,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     if (_engine.isWon) _handleWin();
   }
 
-  /// A category card was dropped on empty tableau column [toColumn].
+  /// A card was dropped on tableau column [toColumn] (any card onto an empty
+  /// column, or a same-category word onto a matching top).
   void _onDropColumn(_CardRef ref, int toColumn) {
     if (_isComplete) return;
     final result = _engine.moveToColumn(ref.source, ref.column, toColumn);

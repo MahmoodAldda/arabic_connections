@@ -19,7 +19,11 @@ class RoundSpec {
     required this.freeHints,
     required this.parTimeSec,
     required this.difficulty,
+    this.columnCount = 6,
   });
+
+  /// Number of tableau columns. Fewer columns pile cards deeper (harder).
+  final int columnCount;
 
   /// Cards dealt per tableau column (top face-up, rest hidden). Higher = harder.
   final int columnDepth;
@@ -44,6 +48,7 @@ class RoundSpec {
     final bury = number > 2;
     final difficulty = number <= 2 ? 0.15 : (number <= 4 ? 0.4 : 0.65);
     return RoundSpec(
+      columnCount: (categoryCount + 1).clamp(5, 7),
       columnDepth: depth,
       buryCategoryCards: bury,
       freeHints: number <= 2 ? 2 : 1,
@@ -53,6 +58,7 @@ class RoundSpec {
   }
 
   RoundSpec copyWith({
+    int? columnCount,
     int? columnDepth,
     bool? buryCategoryCards,
     int? freeHints,
@@ -60,6 +66,7 @@ class RoundSpec {
     double? difficulty,
   }) {
     return RoundSpec(
+      columnCount: columnCount ?? this.columnCount,
       columnDepth: columnDepth ?? this.columnDepth,
       buryCategoryCards: buryCategoryCards ?? this.buryCategoryCards,
       freeHints: freeHints ?? this.freeHints,
@@ -122,6 +129,8 @@ class DifficultyDirector {
     final difficulty = (r / 100).clamp(0.0, 1.0);
 
     return RoundSpec(
+      // Fewer columns as skill rises → cards pile deeper and mix more.
+      columnCount: (categoryCount + (r < 50 ? 1 : 0)).clamp(5, 7),
       columnDepth: depth,
       buryCategoryCards: bury,
       freeHints: freeHints,
