@@ -16,15 +16,32 @@ import '../widgets/fireworks.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/pressable_button.dart';
 import 'difficulty.dart';
+import 'progression.dart';
 import 'solitaire_engine.dart';
 
 /// Identifies a playable card and where it came from.
 class _CardRef {
-  const _CardRef(this.source, this.column, this.card);
+  const _CardRef(
+    this.source,
+    this.column,
+    this.card, {
+    this.index = -1,
+    this.runCards = const [],
+  });
 
   final CardSource source;
   final int column; // tableau column, or -1 for the waste
-  final GameCard card;
+  final GameCard card; // the grabbed card (lowest of a run)
+
+  /// Tableau row of the grabbed card (-1 for the waste).
+  final int index;
+
+  /// The run being dragged, bottom→top. A single card for the waste or a
+  /// one-card pickup.
+  final List<GameCard> runCards;
+
+  /// Number of cards moving together.
+  int get count => runCards.isEmpty ? 1 : runCards.length;
 }
 
 /// Maps a category id to a representative icon for its category card.
@@ -89,11 +106,19 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   final SoundService _sound = SoundService.instance;
   final DifficultyDirector _director = const DifficultyDirector();
 
-  late int _levelIndex;
   late SolitaireEngine _engine;
+
+  /// One continuous, level-less game: rounds count up and content/difficulty
+  /// scale with skill. (Daily mode remains a single fixed round.)
+  int _round = 1;
+  late Level _currentLevel;
 
   /// Hints consulted this round (free + paid) — feeds adaptive difficulty.
   int _hintsUsed = 0;
+
+  // Multi-card drag: the column and starting row of the run being dragged.
+  int? _dragColumn;
+  int _dragIndex = 0;
 
   // Outcome of the just-won round, surfaced on the victory sheet.
   RewardBreakdown? _lastReward;
@@ -124,16 +149,31 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   final GlobalKey _coinKey = GlobalKey();
   final GlobalKey _wasteKey = GlobalKey();
 
-  Level get _level => widget.session.activeLevel;
+  Level get _level =>
+      widget.session.isDaily ? widget.session.dailyLevel! : _currentLevel;
 
   GlobalKey _cardKey(String id) =>
       _cardKeys.putIfAbsent(id, () => GlobalKey());
 
+  /// Picks the content (categories/words) for the current [_round], scaling the
+  /// number of categories with the player's skill for a sense of progression.
+  void _pickContent() {
+    final levels = widget.session.levels;
+    if (levels.isEmpty) return;
+    final idx = pickRoundLevelIndex(
+      categoryCounts: [for (final l in levels) l.categories.length],
+      skill: widget.playerService.skill,
+      round: _round,
+    );
+    _currentLevel = levels[idx.clamp(0, levels.length - 1)];
+  }
+
   @override
   void initState() {
     super.initState();
-    _levelIndex =
-        widget.session.levelIndex.clamp(0, widget.session.levels.length - 1);
+    if (!widget.session.isDaily) {
+      _pickContent();
+    }
     _shakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 450),
@@ -192,7 +232,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     late OverlayEntry entry;
     entry = OverlayEntry(
       builder: (_) => _LevelIntro(
-        text: widget.session.isDaily ? _level.title : 'المستوى ${_level.number}',
+        text: widget.session.isDaily ? _level.title : 'الجولة $_round',
         onDone: () => entry.remove(),
       ),
     );
@@ -276,20 +316,46 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     if (_engine.isWon) _handleWin();
   }
 
-  /// A card was dropped on tableau column [toColumn] (any card onto an empty
-  /// column, or a same-category word onto a matching top).
+  /// Whether [ref] can be dropped on tableau column [col]. Tableau sources move
+  /// a run (one or more same-category cards); the waste moves a single card.
+  bool _canAcceptColumn(_CardRef ref, int col) {
+    if (ref.source == CardSource.tableau) {
+      return _engine.canMoveRun(ref.column, ref.index, col);
+    }
+    return _engine.canPlaceOnColumn(ref.card, col);
+  }
+
+  void _onRunDragStarted(int column, int index) {
+    _sound.play(SoundFx.cardTap);
+    setState(() {
+      _dragColumn = column;
+      _dragIndex = index;
+    });
+  }
+
+  void _onRunDragEnded() {
+    if (_dragColumn != null) setState(() => _dragColumn = null);
+  }
+
+  /// A card (or a same-category run) was dropped on tableau column [toColumn]:
+  /// any run onto an empty column, or a same-category run onto a matching top.
   void _onDropColumn(_CardRef ref, int toColumn) {
     if (_isComplete) return;
-    final result = _engine.moveToColumn(ref.source, ref.column, toColumn);
+    final result = ref.source == CardSource.tableau
+        ? _engine.moveRun(ref.column, ref.index, toColumn)
+        : _engine.moveToColumn(ref.source, ref.column, toColumn);
     if (!result.accepted) {
       _sound.play(SoundFx.wrong);
       _rejectFeedback();
-      setState(() {});
+      setState(() => _dragColumn = null);
       return;
     }
     _sound.play(SoundFx.cardMove);
     _haptic(HapticFeedback.selectionClick);
-    setState(() => _hintedWordId = null);
+    setState(() {
+      _hintedWordId = null;
+      _dragColumn = null;
+    });
   }
 
   void _drawStock() {
@@ -416,7 +482,6 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
 
   void _showVictory() {
     final isDaily = widget.session.isDaily;
-    final isLastLevel = _levelIndex >= widget.session.levels.length - 1;
     showModalBottomSheet<void>(
       context: context,
       isDismissible: false,
@@ -424,7 +489,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       backgroundColor: Colors.transparent,
       builder: (context) => VictorySheet(
         stars: _engine.stars,
-        levelNumber: _level.number,
+        round: _round,
         reward: _lastReward,
         coinsEarned: _lastReward?.total ?? widget.session.coinReward,
         streak: _lastStreak,
@@ -436,7 +501,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
         bestCombo: _engine.bestCombo,
         elapsed: _elapsed,
         isDaily: isDaily,
-        showNext: !isDaily && !isLastLevel,
+        // Classic play is one continuous game — there is always a next round.
+        showNext: !isDaily,
         onReplay: () {
           Navigator.pop(context);
           _initLevel();
@@ -444,7 +510,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
         },
         onNext: () {
           Navigator.pop(context);
-          setState(() => _levelIndex = isLastLevel ? 0 : _levelIndex + 1);
+          setState(() => _round++);
+          _pickContent();
           _initLevel(showIntro: true);
           _flyCoinsToBadge();
         },
@@ -485,6 +552,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
               children: [
                 _SolitaireHeader(
                   level: _level,
+                  round: _round,
                   moves: _engine.moves,
                   mistakes: _engine.mistakes,
                   bestCombo: _engine.bestCombo,
@@ -509,7 +577,9 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                           level: _level,
                           flashIndex: _flashFoundationIndex,
                           slotKeys: _foundationKeys,
+                          // Foundations take one card at a time — never a run.
                           canAccept: (ref, i) =>
+                              ref.count == 1 &&
                               _engine.canPlaceOnFoundation(ref.card, i),
                           onAccept: _onDropFoundation,
                         ),
@@ -535,12 +605,12 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
                               hintedWordId: _hintedWordId,
                               dealAnimation: _dealController,
                               cardKeyFor: _cardKey,
-                              canAcceptColumn: (ref, col) =>
-                                  !(ref.source == CardSource.tableau &&
-                                      ref.column == col) &&
-                                  _engine.canPlaceOnColumn(ref.card, col),
+                              dragColumn: _dragColumn,
+                              dragIndex: _dragIndex,
+                              canAcceptColumn: _canAcceptColumn,
                               onDropColumn: _onDropColumn,
-                              onDragStarted: () => _sound.play(SoundFx.cardTap),
+                              onRunDragStarted: _onRunDragStarted,
+                              onDragEnded: _onRunDragEnded,
                               enabled: !_isComplete,
                             ),
                           ),
@@ -594,6 +664,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
 class _SolitaireHeader extends StatelessWidget {
   const _SolitaireHeader({
     required this.level,
+    required this.round,
     required this.moves,
     required this.mistakes,
     required this.bestCombo,
@@ -610,6 +681,7 @@ class _SolitaireHeader extends StatelessWidget {
   });
 
   final Level level;
+  final int round;
   final int moves;
   final int mistakes;
   final int bestCombo;
@@ -669,7 +741,7 @@ class _SolitaireHeader extends StatelessWidget {
                           ),
                         ),
                       Text(
-                        isDaily ? level.title : 'المستوى ${level.number}',
+                        isDaily ? level.title : 'الجولة $round',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GameTextStyles.title.copyWith(
@@ -1295,9 +1367,12 @@ class _Tableau extends StatelessWidget {
     required this.hintedWordId,
     required this.dealAnimation,
     required this.cardKeyFor,
+    required this.dragColumn,
+    required this.dragIndex,
     required this.canAcceptColumn,
     required this.onDropColumn,
-    required this.onDragStarted,
+    required this.onRunDragStarted,
+    required this.onDragEnded,
     required this.enabled,
   });
 
@@ -1306,9 +1381,12 @@ class _Tableau extends StatelessWidget {
   final String? hintedWordId;
   final Animation<double> dealAnimation;
   final GlobalKey Function(String id) cardKeyFor;
+  final int? dragColumn;
+  final int dragIndex;
   final bool Function(_CardRef ref, int column) canAcceptColumn;
   final void Function(_CardRef ref, int column) onDropColumn;
-  final VoidCallback onDragStarted;
+  final void Function(int column, int index) onRunDragStarted;
+  final VoidCallback onDragEnded;
   final bool enabled;
 
   @override
@@ -1373,6 +1451,15 @@ class _Tableau extends StatelessWidget {
                           ...List.generate(column.length, (index) {
                             final tc = column[index];
                             final isTop = index == column.length - 1;
+                            // Cards from this face-up row up to the top move as
+                            // one run (all guaranteed to be the same category).
+                            final runCards = tc.faceUp
+                                ? [
+                                    for (var r = index; r < column.length; r++)
+                                      column[r].card,
+                                  ]
+                                : const <GameCard>[];
+                            final dimmed = dragColumn == i && index >= dragIndex;
                             return Positioned(
                               key: ValueKey(tc.card.id),
                               top: index * peek,
@@ -1384,14 +1471,20 @@ class _Tableau extends StatelessWidget {
                                     level.categoryById(tc.card.categoryId),
                                 faceUp: tc.faceUp,
                                 column: i,
+                                index: index,
                                 isTop: isTop,
+                                runCards: runCards,
+                                peek: peek,
+                                dimmed: dimmed,
                                 boxKey: isTop ? cardKeyFor(tc.card.id) : null,
                                 width: cardWidth,
                                 height: cardHeight,
                                 isHinted: tc.card.id == hintedWordId,
                                 entranceIndex: baseIndex + index,
                                 dealAnimation: dealAnimation,
-                                onDragStarted: onDragStarted,
+                                categoryFor: level.categoryById,
+                                onRunDragStarted: onRunDragStarted,
+                                onDragEnded: onDragEnded,
                                 enabled: enabled,
                               ),
                             );
@@ -1485,14 +1578,20 @@ class _TableauCardWidget extends StatefulWidget {
     required this.category,
     required this.faceUp,
     required this.column,
+    required this.index,
     required this.isTop,
+    required this.runCards,
+    required this.peek,
+    required this.dimmed,
     required this.boxKey,
     required this.width,
     required this.height,
     required this.isHinted,
     required this.entranceIndex,
     required this.dealAnimation,
-    required this.onDragStarted,
+    required this.categoryFor,
+    required this.onRunDragStarted,
+    required this.onDragEnded,
     required this.enabled,
   });
 
@@ -1504,14 +1603,23 @@ class _TableauCardWidget extends StatefulWidget {
   /// in place by the engine.
   final bool faceUp;
   final int column;
+  final int index;
   final bool isTop;
+
+  /// The run this card leads (bottom→top), all the same category. Empty for a
+  /// face-down card.
+  final List<GameCard> runCards;
+  final double peek;
+  final bool dimmed;
   final GlobalKey? boxKey;
   final double width;
   final double height;
   final bool isHinted;
   final int entranceIndex;
   final Animation<double> dealAnimation;
-  final VoidCallback onDragStarted;
+  final Category Function(String id) categoryFor;
+  final void Function(int column, int index) onRunDragStarted;
+  final VoidCallback onDragEnded;
   final bool enabled;
 
   @override
@@ -1559,32 +1667,30 @@ class _TableauCardWidgetState extends State<_TableauCardWidget>
       ),
     );
 
-    final interactive = widget.isTop && widget.faceUp && widget.enabled;
+    // Any face-up card can be picked up; it carries the same-category run from
+    // this row to the top of the column.
+    final interactive = widget.faceUp && widget.enabled;
 
     Widget content = sized;
     if (interactive) {
-      final ref = _CardRef(CardSource.tableau, widget.column, widget.card);
+      final ref = _CardRef(
+        CardSource.tableau,
+        widget.column,
+        widget.card,
+        index: widget.index,
+        runCards: widget.runCards,
+      );
       content = Draggable<_CardRef>(
         data: ref,
         dragAnchorStrategy: childDragAnchorStrategy,
         onDragStarted: () {
           setState(() => _pressed = false);
-          widget.onDragStarted();
+          widget.onRunDragStarted(widget.column, widget.index);
         },
-        feedback: Material(
-          color: Colors.transparent,
-          child: SizedBox(
-            width: widget.width,
-            height: widget.height,
-            child: _CardFace(
-              card: widget.card,
-              category: widget.category,
-              isHinted: widget.isHinted,
-              elevated: true,
-            ),
-          ),
-        ),
-        childWhenDragging: Opacity(opacity: 0.28, child: sized),
+        onDragEnd: (_) => widget.onDragEnded(),
+        onDraggableCanceled: (_, __) => widget.onDragEnded(),
+        feedback: _runFeedback(),
+        childWhenDragging: sized,
         child: GestureDetector(
           onTapDown: (_) => setState(() => _pressed = true),
           onTapUp: (_) => setState(() => _pressed = false),
@@ -1597,6 +1703,10 @@ class _TableauCardWidgetState extends State<_TableauCardWidget>
         duration: const Duration(milliseconds: 110),
         child: content,
       );
+    }
+
+    if (widget.dimmed) {
+      content = Opacity(opacity: 0.28, child: content);
     }
 
     return AnimatedBuilder(
@@ -1617,6 +1727,65 @@ class _TableauCardWidgetState extends State<_TableauCardWidget>
         );
       },
       child: content,
+    );
+  }
+
+  /// Drag preview: the whole run rendered as an overlapping stack that follows
+  /// the finger, with a soft badge showing the count when more than one.
+  Widget _runFeedback() {
+    final run = widget.runCards.isEmpty ? [widget.card] : widget.runCards;
+    final n = run.length;
+    final totalHeight = widget.height + widget.peek * (n - 1);
+    return Material(
+      color: Colors.transparent,
+      child: SizedBox(
+        width: widget.width,
+        height: totalHeight,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (var r = 0; r < n; r++)
+              Positioned(
+                top: r * widget.peek,
+                left: 0,
+                right: 0,
+                child: SizedBox(
+                  width: widget.width,
+                  height: widget.height,
+                  child: _CardFace(
+                    card: run[r],
+                    category: widget.categoryFor(run[r].categoryId),
+                    isHinted: false,
+                    elevated: true,
+                  ),
+                ),
+              ),
+            if (n > 1)
+              Positioned(
+                top: -6,
+                right: -6,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E8B4C),
+                    borderRadius: BorderRadius.circular(GameRadii.pill),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                    boxShadow: GameShadows.soft,
+                  ),
+                  child: Text(
+                    '$n',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -2354,7 +2523,7 @@ class VictorySheet extends StatefulWidget {
   const VictorySheet({
     super.key,
     required this.stars,
-    required this.levelNumber,
+    required this.round,
     required this.coinsEarned,
     required this.moves,
     required this.mistakes,
@@ -2373,7 +2542,7 @@ class VictorySheet extends StatefulWidget {
   });
 
   final int stars;
-  final int levelNumber;
+  final int round;
   final int coinsEarned;
   final int moves;
   final int mistakes;
@@ -2441,6 +2610,13 @@ class _VictorySheetState extends State<VictorySheet>
             style: GameTextStyles.display
                 .copyWith(fontSize: 30, color: GameColors.green),
           ),
+          if (!widget.isDaily) ...[
+            const SizedBox(height: 4),
+            Text(
+              'الجولة ${widget.round} مكتملة',
+              style: GameTextStyles.subtitle.copyWith(fontSize: 14),
+            ),
+          ],
           const SizedBox(height: 18),
           _StarsRow(stars: widget.stars, controller: _controller),
           const SizedBox(height: 20),
@@ -2492,7 +2668,7 @@ class _VictorySheetState extends State<VictorySheet>
           const SizedBox(height: 24),
           if (widget.showNext)
             PressableButton(
-              label: 'المستوى التالي',
+              label: 'استمر',
               icon: Icons.arrow_back_rounded,
               gradient: GameGradients.green,
               height: 56,

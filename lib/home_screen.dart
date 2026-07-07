@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openClassic({int levelIndex = 0}) {
+  void _openClassic() {
     if (_levels.isEmpty) return;
     SoundService.instance.play(SoundFx.button);
     Navigator.of(context).push(
@@ -84,12 +84,11 @@ class _HomeScreenState extends State<HomeScreen> {
           session: GameSession(
             mode: GameMode.classic,
             levels: _levels,
-            levelIndex: levelIndex,
           ),
           playerService: widget.playerService,
         ),
       ),
-    );
+    ).then((_) => setState(() {}));
   }
 
   void _openDaily() {
@@ -202,12 +201,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           gradient: GameGradients.green,
                           enabled: _levels.isNotEmpty,
                           height: 58,
-                          onPressed: _levels.isEmpty ? null : () => _openClassic(),
+                          onPressed: _levels.isEmpty ? null : _openClassic,
                         ),
-                        const SizedBox(height: 20),
-                        _LevelGrid(
-                          levels: _levels,
-                          onLevelTap: (i) => _openClassic(levelIndex: i),
+                        const SizedBox(height: 10),
+                        Text(
+                          'لعبة واحدة متواصلة تزداد صعوبةً كلما تقدّمت',
+                          textAlign: TextAlign.center,
+                          style: GameTextStyles.subtitle.copyWith(fontSize: 13),
                         ),
                         const SizedBox(height: 20),
                         _RewardedAdCard(
@@ -382,68 +382,6 @@ class _DailyChallengeCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _LevelGrid extends StatelessWidget {
-  const _LevelGrid({required this.levels, required this.onLevelTap});
-
-  final List<Level> levels;
-  final ValueChanged<int> onLevelTap;
-
-  static const _tileGradients = [
-    GameGradients.green,
-    GameGradients.blue,
-    GameGradients.orange,
-    GameGradients.purple,
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    if (levels.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 4, bottom: 10),
-          child: Text('المستويات (${levels.length})',
-              style: GameTextStyles.title.copyWith(fontSize: 18)),
-        ),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: List.generate(levels.length, (i) {
-            final gradient = _tileGradients[i % _tileGradients.length];
-            return GestureDetector(
-              onTap: () => onLevelTap(i),
-              child: Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  gradient: gradient,
-                  borderRadius: BorderRadius.circular(GameRadii.md),
-                  boxShadow: GameShadows.card,
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  '${levels[i].number}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(color: Color(0x40000000), blurRadius: 3, offset: Offset(0, 1)),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
     );
   }
 }

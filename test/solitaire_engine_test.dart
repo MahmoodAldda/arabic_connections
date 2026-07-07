@@ -33,6 +33,16 @@ int _cardsOnBoard(SolitaireEngine e) =>
 GameCard _wordOf(SolitaireEngine e, String categoryId) =>
     GameCard.word(e.level.words.firstWhere((w) => w.categoryId == categoryId));
 
+/// All word cards of category [categoryId] in [e]'s level.
+List<GameCard> _wordsOf(SolitaireEngine e, String categoryId) => e.level.words
+    .where((w) => w.categoryId == categoryId)
+    .map(GameCard.word)
+    .toList();
+
+/// The category card for [categoryId].
+GameCard _catCard(SolitaireEngine e, String categoryId) =>
+    GameCard.category(e.level.categories.firstWhere((c) => c.id == categoryId));
+
 /// The index of a column whose face-up top is a category card (the deal always
 /// surfaces at least one), or -1.
 int _catTopCol(SolitaireEngine e) => List.generate(e.columnCount, (i) => i)
@@ -271,6 +281,92 @@ void main() {
     test('undo returns false when there is nothing to undo', () {
       final e = SolitaireEngine(_buildLevel(4), random: Random(1));
       expect(e.undo(), isFalse);
+    });
+  });
+
+  group('multi-card runs', () {
+    // Builds a column [hidden other-cat][faceUp c0 #0][faceUp c0 #1] in col 0,
+    // an empty col 1, and a col 2 topped by a face-up c0 word.
+    SolitaireEngine runBoard() {
+      final e = SolitaireEngine(_buildLevel(3), random: Random(2));
+      final c0 = _wordsOf(e, 'c0');
+      final c1 = _wordsOf(e, 'c1');
+      e.columns[0]
+        ..clear()
+        ..add(TableauCard(c1[0], faceUp: false))
+        ..add(TableauCard(c0[0], faceUp: true))
+        ..add(TableauCard(c0[1], faceUp: true));
+      e.columns[1].clear(); // empty column
+      e.columns[2]
+        ..clear()
+        ..add(TableauCard(c0[2], faceUp: true));
+      return e;
+    }
+
+    test('runLength counts the face-up same-category tail', () {
+      final e = runBoard();
+      expect(e.runLength(0, 1), 2); // both face-up c0 cards
+      expect(e.runLength(0, 2), 1); // just the top
+      expect(e.runLength(0, 0), 0); // face-down start is not a run
+    });
+
+    test('a run can move onto a same-category top and stack', () {
+      final e = runBoard();
+      expect(e.canMoveRun(0, 1, 2), isTrue);
+      final result = e.moveRun(0, 1, 2);
+      expect(result.accepted, isTrue);
+      expect(e.columns[2].length, 3); // c0 word + the 2-run
+      expect(e.columns[2].every((tc) => tc.faceUp), isTrue);
+      // The hidden card beneath the run is revealed.
+      expect(e.columns[0].length, 1);
+      expect(e.columns[0].last.faceUp, isTrue);
+    });
+
+    test('any run can move onto an empty column', () {
+      final e = runBoard();
+      expect(e.canMoveRun(0, 1, 1), isTrue);
+      expect(e.moveRun(0, 1, 1).accepted, isTrue);
+      expect(e.columns[1].length, 2);
+    });
+
+    test('a run of one category cannot stack on a different category', () {
+      final e = runBoard();
+      e.columns[2]
+        ..clear()
+        ..add(TableauCard(_wordOf(e, 'c1'), faceUp: true));
+      expect(e.canMoveRun(0, 1, 2), isFalse);
+      expect(e.moveRun(0, 1, 2).outcome, PlaceOutcome.rejected);
+    });
+
+    test('a run cannot be dropped on its own column', () {
+      final e = runBoard();
+      expect(e.canMoveRun(0, 1, 0), isFalse);
+    });
+
+    test('a category-led run can only start an empty column', () {
+      final e = SolitaireEngine(_buildLevel(3), random: Random(3));
+      final c0 = _wordsOf(e, 'c0');
+      e.columns[0]
+        ..clear()
+        ..add(TableauCard(_catCard(e, 'c0'), faceUp: true))
+        ..add(TableauCard(c0[0], faceUp: true));
+      e.columns[1].clear();
+      e.columns[2]
+        ..clear()
+        ..add(TableauCard(c0[1], faceUp: true));
+      expect(e.canMoveRun(0, 0, 1), isTrue); // empty column accepts anything
+      expect(e.canMoveRun(0, 0, 2), isFalse); // can't stack a category on a word
+    });
+
+    test('undo restores a moved run and re-hides the revealed card', () {
+      final e = runBoard();
+      final beforeCol0 = [for (final tc in e.columns[0]) tc.card.id];
+      e.moveRun(0, 1, 1);
+      expect(e.undo(), isTrue);
+      expect([for (final tc in e.columns[0]) tc.card.id], beforeCol0);
+      expect(e.columns[0].first.faceUp, isFalse); // hidden card re-hidden
+      expect(e.columns[1], isEmpty);
+      expect(e.moves, 0);
     });
   });
 }

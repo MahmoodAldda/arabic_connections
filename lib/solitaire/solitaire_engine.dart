@@ -93,7 +93,7 @@ class HintMove {
   final int foundationIndex;
 }
 
-enum _MoveType { toFoundation, toColumn, draw, recycle }
+enum _MoveType { toFoundation, toColumn, runToColumn, draw, recycle }
 
 class _Move {
   _Move.toFoundation({
@@ -115,6 +115,16 @@ class _Move {
   })  : type = _MoveType.toColumn,
         foundationIndex = -1,
         count = 0;
+
+  _Move.runToColumn({
+    required this.fromColumn,
+    required this.toColumn,
+    required this.count,
+    required this.revealed,
+  })  : type = _MoveType.runToColumn,
+        source = CardSource.tableau,
+        foundationIndex = -1,
+        card = null;
 
   _Move.draw()
       : type = _MoveType.draw,
@@ -488,6 +498,64 @@ class SolitaireEngine {
     return PlaceResult(PlaceOutcome.matched, revealedCard: revealed);
   }
 
+  /// Length of the movable run whose **lowest** card is column[[index]]: the
+  /// contiguous, face-up, same-category cards from [index] up to the top. Since
+  /// only same-category cards can stack, the whole face-up section of a column
+  /// is a single run, so this is normally `column.length - index`. Returns 0 if
+  /// [index] is not a valid face-up run start.
+  int runLength(int column, int index) {
+    if (column < 0 || column >= columns.length) return 0;
+    final col = columns[column];
+    if (index < 0 || index >= col.length || !col[index].faceUp) return 0;
+    final cat = col[index].card.categoryId;
+    for (var i = index; i < col.length; i++) {
+      if (!col[i].faceUp || col[i].card.categoryId != cat) return 0;
+    }
+    return col.length - index;
+  }
+
+  /// Whether the run starting at column[[fromColumn]][[index]] can move to
+  /// [toColumn]: any run onto an empty column, or a word-led run onto a
+  /// same-category (face-up) top.
+  bool canMoveRun(int fromColumn, int index, int toColumn) {
+    if (fromColumn == toColumn) return false;
+    if (runLength(fromColumn, index) == 0) return false;
+    if (toColumn < 0 || toColumn >= columns.length) return false;
+    final bottom = columns[fromColumn][index].card; // the grabbed card
+    final dest = columns[toColumn];
+    if (dest.isEmpty) return true;
+    final top = dest.last;
+    if (!top.faceUp) return false;
+    return !bottom.isCategory && bottom.categoryId == top.card.categoryId;
+  }
+
+  /// Moves the run at column[[fromColumn]] starting at [index] onto [toColumn],
+  /// preserving order and flipping any newly exposed card beneath it.
+  PlaceResult moveRun(int fromColumn, int index, int toColumn) {
+    if (!canMoveRun(fromColumn, index, toColumn)) {
+      return const PlaceResult(PlaceOutcome.rejected);
+    }
+    final col = columns[fromColumn];
+    final moved = col.sublist(index);
+    col.removeRange(index, col.length);
+    GameCard? revealed;
+    if (col.isNotEmpty && !col.last.faceUp) {
+      col.last.faceUp = true;
+      revealed = col.last.card;
+    }
+    for (final tc in moved) {
+      columns[toColumn].add(TableauCard(tc.card, faceUp: true));
+    }
+    _history.add(_Move.runToColumn(
+      fromColumn: fromColumn,
+      toColumn: toColumn,
+      count: moved.length,
+      revealed: revealed != null,
+    ));
+    _moves++;
+    return PlaceResult(PlaceOutcome.matched, revealedCard: revealed);
+  }
+
   bool drawFromStock() {
     if (stock.isNotEmpty) {
       waste.add(stock.removeLast());
@@ -526,6 +594,17 @@ class SolitaireEngine {
       case _MoveType.toColumn:
         columns[move.toColumn].removeLast();
         _returnToSource(move);
+        if (_moves > 0) _moves--;
+      case _MoveType.runToColumn:
+        final to = columns[move.toColumn];
+        final moved = to.sublist(to.length - move.count);
+        to.removeRange(to.length - move.count, to.length);
+        if (move.revealed && columns[move.fromColumn].isNotEmpty) {
+          columns[move.fromColumn].last.faceUp = false;
+        }
+        for (final tc in moved) {
+          columns[move.fromColumn].add(TableauCard(tc.card, faceUp: true));
+        }
         if (_moves > 0) _moves--;
       case _MoveType.draw:
         if (waste.isNotEmpty) stock.add(waste.removeLast());
