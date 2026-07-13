@@ -40,6 +40,12 @@ void main() {
             reason: 'level ${level.number} word ${w.id} has unknown category');
       }
 
+      // Every level carries a non-empty story for the intro screen.
+      expect(level.story, isNotNull,
+          reason: 'level ${level.number} is missing a story');
+      expect(level.story!.trim(), isNotEmpty,
+          reason: 'level ${level.number} has an empty story');
+
       expect(numbers.add(level.number), isTrue,
           reason: 'duplicate level number ${level.number}');
     }

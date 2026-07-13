@@ -100,12 +100,17 @@ class Level {
     required this.title,
     required this.categories,
     required this.words,
+    this.story,
   })  : assert(categories.length >= 2, 'A level needs at least 2 categories'),
         assert(words.length == categories.length * 4,
             'Each category must have exactly 4 words');
 
   final int number;
   final String title;
+
+  /// Optional short narrative shown on the level-intro screen to set the theme
+  /// and make progression feel like a journey.
+  final String? story;
   final List<Category> categories;
   final List<WordItem> words;
 
@@ -113,6 +118,7 @@ class Level {
     return Level(
       number: json['number'] as int,
       title: json['title'] as String,
+      story: json['story'] as String?,
       categories: (json['categories'] as List<dynamic>)
           .map((e) => Category.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -125,6 +131,7 @@ class Level {
   Map<String, dynamic> toJson() => {
         'number': number,
         'title': title,
+        if (story != null) 'story': story,
         'categories': categories.map((c) => c.toJson()).toList(),
         'words': words.map((w) => w.toJson()).toList(),
       };

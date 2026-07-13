@@ -7,6 +7,7 @@ environment:
   sdk: '>=3.2.0 <4.0.0'
 
 dependencies:
+  audioplayers: ^6.8.1
   flutter:
     sdk: flutter
   flutter_localizations:
@@ -24,3 +25,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/levels.json
+    - assets/sfx/

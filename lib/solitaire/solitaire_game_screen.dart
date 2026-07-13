@@ -187,16 +187,32 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   GlobalKey _cardKey(String id) =>
       _cardKeys.putIfAbsent(id, () => GlobalKey());
 
+  /// Index of the content used last round, so we don't immediately repeat it.
+  int _lastContentIndex = -1;
+
   /// Picks the content (categories/words) for the current [_round], scaling the
   /// number of categories with the player's skill for a sense of progression.
+  /// Avoids repeating the previous round's content so each win visibly advances
+  /// to a new level.
   void _pickContent() {
     final levels = widget.session.levels;
     if (levels.isEmpty) return;
-    final idx = pickRoundLevelIndex(
-      categoryCounts: [for (final l in levels) l.categories.length],
-      skill: widget.playerService.skill,
+    final counts = [for (final l in levels) l.categories.length];
+    final skill = widget.playerService.skill;
+    var idx = pickRoundLevelIndex(
+      categoryCounts: counts,
+      skill: skill,
       round: _round,
     );
+    var attempt = 0;
+    while (idx == _lastContentIndex && levels.length > 1 && attempt++ < 8) {
+      idx = pickRoundLevelIndex(
+        categoryCounts: counts,
+        skill: skill,
+        round: _round * 7 + attempt,
+      );
+    }
+    _lastContentIndex = idx;
     _currentLevel = levels[idx.clamp(0, levels.length - 1)];
   }
 
@@ -204,6 +220,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   void initState() {
     super.initState();
     if (!widget.session.isDaily) {
+      // Resume the continuous game where the player left off.
+      _round = widget.playerService.round;
       _pickContent();
     }
     _shakeController = AnimationController(
@@ -216,6 +234,24 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
     );
     _initLevel();
     widget.playerService.addListener(_onPlayerUpdate);
+    if (!widget.session.isDaily && !widget.playerService.tutorialSeen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showTutorial());
+    }
+  }
+
+  void _showTutorial() {
+    if (!mounted) return;
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _TutorialOverlay(
+        onDone: () {
+          if (entry.mounted) entry.remove();
+          widget.playerService.markTutorialSeen();
+        },
+      ),
+    );
+    overlay.insert(entry);
   }
 
   void _onPlayerUpdate() {
@@ -261,11 +297,17 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   void _showLevelIntro() {
     if (!mounted) return;
     final overlay = Overlay.of(context);
+    final isDaily = widget.session.isDaily;
     late OverlayEntry entry;
     entry = OverlayEntry(
       builder: (_) => _LevelIntro(
-        text: widget.session.isDaily ? _level.title : 'الجولة $_round',
-        onDone: () => entry.remove(),
+        eyebrow: isDaily ? 'تحدّي اليوم' : 'الجولة $_round',
+        title: _level.title,
+        story: _level.story,
+        categoryCount: _level.categories.length,
+        onDone: () {
+          if (entry.mounted) entry.remove();
+        },
       ),
     );
     overlay.insert(entry);
@@ -543,6 +585,9 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
         onNext: () {
           Navigator.pop(context);
           setState(() => _round++);
+          if (!widget.session.isDaily) {
+            widget.playerService.saveRound(_round);
+          }
           _pickContent();
           _initLevel(showIntro: true);
           _flyCoinsToBadge();
@@ -2042,13 +2087,6 @@ class _CardFace extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!isHinted) ...[
-                Positioned(top: 4, left: 5, child: _pip(category.color)),
-                Positioned(
-                    bottom: 4,
-                    right: 5,
-                    child: _pip(category.color, flip: true)),
-              ],
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                 child: Center(
@@ -3049,10 +3087,25 @@ class _CoinFlyState extends State<_CoinFly>
 // Level intro banner
 // ---------------------------------------------------------------------------
 
+/// A premium, story-driven "chapter" card shown when a new round begins.
+///
+/// Sets the theme with an eyebrow (round/daily), a bold title and a short
+/// narrative so progression feels like a journey. It fades in over a dimmed
+/// backdrop, auto-dismisses after a readable pause, and can be skipped early
+/// with a tap.
 class _LevelIntro extends StatefulWidget {
-  const _LevelIntro({required this.text, required this.onDone});
+  const _LevelIntro({
+    required this.eyebrow,
+    required this.title,
+    required this.story,
+    required this.categoryCount,
+    required this.onDone,
+  });
 
-  final String text;
+  final String eyebrow;
+  final String title;
+  final String? story;
+  final int categoryCount;
   final VoidCallback onDone;
 
   @override
@@ -3062,14 +3115,248 @@ class _LevelIntro extends StatefulWidget {
 class _LevelIntroState extends State<_LevelIntro>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  Timer? _autoTimer;
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..forward().then((_) => widget.onDone());
+      duration: const Duration(milliseconds: 420),
+    )..forward();
+    // Longer, readable pause when there's a story to read.
+    final holdMs = (widget.story == null ? 1500 : 3200);
+    _autoTimer = Timer(Duration(milliseconds: holdMs), _dismiss);
+  }
+
+  @override
+  void dispose() {
+    _autoTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _dismiss() async {
+    if (_closing) return;
+    _closing = true;
+    _autoTimer?.cancel();
+    if (mounted) {
+      await _controller.reverse();
+    }
+    widget.onDone();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _dismiss,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = Curves.easeOut.transform(_controller.value);
+          return Container(
+            color: Colors.black.withValues(alpha: 0.55 * t),
+            alignment: Alignment.center,
+            child: Opacity(
+              opacity: t,
+              child: Transform.scale(
+                scale: 0.86 + 0.14 * t,
+                child: child,
+              ),
+            ),
+          );
+        },
+        child: _card(),
+      ),
+    );
+  }
+
+  Widget _card() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: GameColors.surface,
+            borderRadius: BorderRadius.circular(GameRadii.xl),
+            border: Border.all(color: GameColors.gold, width: 2),
+            boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.35),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(height: 6, decoration: const BoxDecoration(gradient: GameGradients.gold)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(26, 22, 26, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _eyebrowChip(),
+                    const SizedBox(height: 14),
+                    Text(
+                      widget.title,
+                      textAlign: TextAlign.center,
+                      style: GameTextStyles.display.copyWith(fontSize: 27),
+                    ),
+                    if (widget.story != null) ...[
+                      const SizedBox(height: 12),
+                      _goldDivider(),
+                      const SizedBox(height: 12),
+                      Text(
+                        widget.story!,
+                        textAlign: TextAlign.center,
+                        style: GameTextStyles.subtitle.copyWith(
+                          fontSize: 15.5,
+                          height: 1.55,
+                          color: GameColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _metaPill(
+                          Icons.category_rounded,
+                          '${widget.categoryCount} مجموعات',
+                        ),
+                        const SizedBox(width: 10),
+                        _metaPill(Icons.touch_app_rounded, 'اضغط للبدء'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _eyebrowChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      decoration: BoxDecoration(
+        gradient: GameGradients.gold,
+        borderRadius: BorderRadius.circular(GameRadii.pill),
+        boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.4),
+      ),
+      child: Text(
+        widget.eyebrow,
+        style: GameTextStyles.button.copyWith(
+          color: const Color(0xFF6E4A00),
+          fontSize: 15,
+        ),
+      ),
+    );
+  }
+
+  Widget _goldDivider() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 34, height: 2, color: GameColors.gold.withValues(alpha: 0.5)),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Icon(Icons.auto_stories_rounded, size: 16, color: GameColors.goldDark),
+        ),
+        Container(width: 34, height: 2, color: GameColors.gold.withValues(alpha: 0.5)),
+      ],
+    );
+  }
+
+  Widget _metaPill(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: GameColors.background,
+        borderRadius: BorderRadius.circular(GameRadii.pill),
+        border: Border.all(color: GameColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: GameColors.textSecondary),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GameTextStyles.subtitle.copyWith(fontSize: 12.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// First-time tutorial
+// ---------------------------------------------------------------------------
+
+class _TutorialPage {
+  const _TutorialPage(this.icon, this.title, this.body);
+  final IconData icon;
+  final String title;
+  final String body;
+}
+
+/// A paged, skippable coach shown once on the player's first classic game. It
+/// explains the four mechanics that aren't obvious: unlocking foundations,
+/// building tableau columns, drawing from the stock, and multi-card drags.
+class _TutorialOverlay extends StatefulWidget {
+  const _TutorialOverlay({required this.onDone});
+
+  final VoidCallback onDone;
+
+  @override
+  State<_TutorialOverlay> createState() => _TutorialOverlayState();
+}
+
+class _TutorialOverlayState extends State<_TutorialOverlay> {
+  final _controller = PageController();
+  int _page = 0;
+
+  static const _pages = [
+    _TutorialPage(
+      Icons.flag_rounded,
+      'الأساسات في الأعلى',
+      'اسحب بطاقة التصنيف (ذات الإطار الذهبي) إلى خانة فارغة في الأعلى لفتحها، '
+          'ثم كدّس فوقها كلمات التصنيف نفسه.',
+    ),
+    _TutorialPage(
+      Icons.layers_rounded,
+      'أعمدة اللعب',
+      'أعلى بطاقة فقط مكشوفة، وعند إزالتها تنقلب البطاقة المخفية تحتها. '
+          'كدّس الكلمات من التصنيف نفسه، وضع أي بطاقة على عمودٍ فارغ.',
+    ),
+    _TutorialPage(
+      Icons.style_rounded,
+      'السحب والمخلّفات',
+      'اضغط على مجموعة السحب في الأسفل لسحب بطاقة جديدة إلى كومة المخلّفات، '
+          'والعب أعلى بطاقة منها.',
+    ),
+    _TutorialPage(
+      Icons.back_hand_rounded,
+      'اسحب عدة بطاقات',
+      'يمكنك التقاط عدة بطاقات متتالية من التصنيف نفسه دفعةً واحدة، ونقلها إلى '
+          'عمودٍ فارغ أو فوق كومة من التصنيف ذاته. افتح كل الأساسات لتفوز!',
+    ),
+  ];
+
+  void _next() {
+    SoundService.instance.play(SoundFx.button);
+    if (_page >= _pages.length - 1) {
+      widget.onDone();
+      return;
+    }
+    _controller.nextPage(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -3080,51 +3367,123 @@ class _LevelIntroState extends State<_LevelIntro>
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final v = _controller.value;
-          double opacity;
-          double dx;
-          if (v < 0.2) {
-            final t = Curves.easeOut.transform(v / 0.2);
-            opacity = t;
-            dx = (1 - t) * 70;
-          } else if (v > 0.8) {
-            final t = (v - 0.8) / 0.2;
-            opacity = 1 - t;
-            dx = -t * 50;
-          } else {
-            opacity = 1;
-            dx = 0;
-          }
-          return Center(
-            child: Opacity(
-              opacity: opacity.clamp(0.0, 1.0),
-              child: Transform.translate(
-                offset: Offset(dx, 0),
-                child: _banner(),
+    final isLast = _page >= _pages.length - 1;
+    return Material(
+      color: Colors.black.withValues(alpha: 0.62),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: GameColors.surface,
+                borderRadius: BorderRadius.circular(GameRadii.xl),
+                border: Border.all(color: GameColors.gold, width: 2),
+                boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.3),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 6,
+                    decoration:
+                        const BoxDecoration(gradient: GameGradients.gold),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8, top: 6),
+                      child: TextButton(
+                        onPressed: widget.onDone,
+                        child: Text(
+                          'تخطّي',
+                          style: GameTextStyles.subtitle
+                              .copyWith(color: GameColors.textSecondary),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 268,
+                    child: PageView.builder(
+                      controller: _controller,
+                      itemCount: _pages.length,
+                      onPageChanged: (i) => setState(() => _page = i),
+                      itemBuilder: (context, i) => _pageView(_pages[i]),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (var i = 0; i < _pages.length; i++)
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: i == _page ? 22 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: i == _page
+                                ? GameColors.gold
+                                : GameColors.border,
+                            borderRadius:
+                                BorderRadius.circular(GameRadii.pill),
+                          ),
+                        ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                    child: PressableButton(
+                      label: isLast ? 'لنبدأ!' : 'التالي',
+                      icon: isLast
+                          ? Icons.play_arrow_rounded
+                          : Icons.arrow_back_rounded,
+                      gradient: GameGradients.green,
+                      height: 54,
+                      onPressed: _next,
+                    ),
+                  ),
+                ],
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 
-  Widget _banner() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 18),
-      decoration: BoxDecoration(
-        gradient: GameGradients.gold,
-        borderRadius: BorderRadius.circular(GameRadii.xl),
-        boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.6),
-      ),
-      child: Text(
-        widget.text,
-        style: GameTextStyles.display
-            .copyWith(color: const Color(0xFF6E4A00), fontSize: 30),
+  Widget _pageView(_TutorialPage page) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 78,
+            height: 78,
+            decoration: BoxDecoration(
+              gradient: GameGradients.gold,
+              shape: BoxShape.circle,
+              boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.4),
+            ),
+            child: Icon(page.icon, size: 40, color: const Color(0xFF6E4A00)),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            page.title,
+            textAlign: TextAlign.center,
+            style: GameTextStyles.title.copyWith(fontSize: 21),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            page.body,
+            textAlign: TextAlign.center,
+            style: GameTextStyles.subtitle.copyWith(fontSize: 14.5, height: 1.6),
+          ),
+        ],
       ),
     );
   }

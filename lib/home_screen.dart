@@ -8,6 +8,7 @@ import 'services/daily_challenge_service.dart';
 import 'services/level_api_service.dart';
 import 'services/player_service.dart';
 import 'services/sound_service.dart';
+import 'solitaire/difficulty.dart';
 import 'solitaire/solitaire_game_screen.dart';
 import 'theme/game_theme.dart';
 import 'widgets/animated_coin_badge.dart';
@@ -185,7 +186,13 @@ class _HomeScreenState extends State<HomeScreen> {
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: GameColors.red)),
                         ],
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 22),
+                        _ProgressCard(
+                          skill: widget.playerService.skill,
+                          round: widget.playerService.round,
+                          streak: widget.playerService.cleanStreak,
+                        ),
+                        const SizedBox(height: 16),
                         _DailyChallengeCard(
                           completed: dailyDone,
                           dateLabel:
@@ -247,6 +254,127 @@ class _BrandTitle extends StatelessWidget {
             Shadow(color: Color(0x22000000), blurRadius: 8, offset: Offset(0, 3)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Surfaces the player's progression: current rank + progress toward the next,
+/// the continuous game's round, and the active clean-win streak. This is the
+/// "sense of advancement" that replaces classic level tiers.
+class _ProgressCard extends StatelessWidget {
+  const _ProgressCard({
+    required this.skill,
+    required this.round,
+    required this.streak,
+  });
+
+  final double skill;
+  final int round;
+  final int streak;
+
+  static const _rankIcons = [
+    Icons.spa_rounded,
+    Icons.eco_rounded,
+    Icons.workspace_premium_rounded,
+    Icons.military_tech_rounded,
+    Icons.emoji_events_rounded,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final rank = PlayerRank.fromSkill(skill);
+    final progress = rank.progressAt(skill);
+    final isMax = rank.index >= PlayerRank.count - 1;
+    final nextName = isMax ? null : PlayerRank.ranks[rank.index + 1].name;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: GameDecorations.premiumCard(
+        color: GameColors.surface,
+        radius: GameRadii.xl,
+        borderColor: GameColors.border,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: GameGradients.gold,
+                  borderRadius: BorderRadius.circular(GameRadii.md),
+                  boxShadow: GameShadows.glow(GameColors.gold, opacity: 0.4),
+                ),
+                child: Icon(
+                  _rankIcons[rank.index.clamp(0, _rankIcons.length - 1)],
+                  color: const Color(0xFF6E4A00),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('رتبتك: ${rank.name}',
+                        style: GameTextStyles.title.copyWith(fontSize: 18)),
+                    Text(
+                      isMax ? 'أعلى رتبة!' : 'التالي: $nextName',
+                      style: GameTextStyles.subtitle.copyWith(fontSize: 12.5),
+                    ),
+                  ],
+                ),
+              ),
+              if (streak > 0) _chip(Icons.local_fire_department_rounded,
+                  '$streak', GameColors.orange),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(GameRadii.pill),
+            child: LinearProgressIndicator(
+              value: isMax ? 1.0 : progress,
+              minHeight: 10,
+              backgroundColor: GameColors.background,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(GameColors.gold),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _chip(Icons.flag_rounded, 'الجولة $round', GameColors.green),
+              const SizedBox(width: 8),
+              _chip(Icons.trending_up_rounded,
+                  'المهارة ${skill.round()}', GameColors.blue),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(GameRadii.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GameTextStyles.subtitle
+                .copyWith(fontSize: 12.5, color: color, fontWeight: FontWeight.w700),
+          ),
+        ],
       ),
     );
   }
