@@ -561,41 +561,48 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
-      builder: (context) => VictorySheet(
-        stars: _engine.stars,
-        round: _round,
-        reward: _lastReward,
-        coinsEarned: _lastReward?.total ?? widget.session.coinReward,
-        streak: _lastStreak,
-        rankName: _rankName,
-        rankProgress: _rankProgress,
-        rankedUp: _rankedUp,
-        moves: _engine.moves,
-        mistakes: _engine.mistakes,
-        bestCombo: _engine.bestCombo,
-        elapsed: _elapsed,
-        isDaily: isDaily,
-        // Classic play is one continuous game — there is always a next round.
-        showNext: !isDaily,
-        onReplay: () {
-          Navigator.pop(context);
-          _initLevel();
-          _flyCoinsToBadge();
-        },
-        onNext: () {
-          Navigator.pop(context);
-          setState(() => _round++);
-          if (!widget.session.isDaily) {
-            widget.playerService.saveRound(_round);
-          }
-          _pickContent();
-          _initLevel(showIntro: true);
-          _flyCoinsToBadge();
-        },
-        onHome: () {
-          Navigator.pop(context);
-          Navigator.pop(context);
-        },
+      // Scroll-controlled + scrollable so the whole card (including the
+      // "استمر" button) is always reachable, even on short screens.
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          child: VictorySheet(
+            stars: _engine.stars,
+            round: _round,
+            reward: _lastReward,
+            coinsEarned: _lastReward?.total ?? widget.session.coinReward,
+            streak: _lastStreak,
+            rankName: _rankName,
+            rankProgress: _rankProgress,
+            rankedUp: _rankedUp,
+            moves: _engine.moves,
+            mistakes: _engine.mistakes,
+            bestCombo: _engine.bestCombo,
+            elapsed: _elapsed,
+            isDaily: isDaily,
+            // Classic play is one continuous game — there is always a next round.
+            showNext: !isDaily,
+            onReplay: () {
+              Navigator.pop(context);
+              _initLevel();
+              _flyCoinsToBadge();
+            },
+            onNext: () {
+              Navigator.pop(context);
+              setState(() => _round++);
+              if (!widget.session.isDaily) {
+                widget.playerService.saveRound(_round);
+              }
+              _pickContent();
+              _initLevel(showIntro: true);
+              _flyCoinsToBadge();
+            },
+            onHome: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+          ),
+        ),
       ),
     );
   }
