@@ -79,6 +79,38 @@ IconData categoryIcon(String id) {
     'tools': Icons.build_rounded,
     'space': Icons.rocket_launch_rounded,
     'oceans': Icons.sailing_rounded,
+    // Picture / everyday categories.
+    'shapes': Icons.category_rounded,
+    'days': Icons.today_rounded,
+    'months': Icons.calendar_month_rounded,
+    'furniture': Icons.chair_rounded,
+    'kitchen': Icons.kitchen_rounded,
+    'sweets': Icons.cake_rounded,
+    'spices': Icons.grass_rounded,
+    'sea': Icons.waves_rounded,
+    'fish': Icons.set_meal_rounded,
+    'reptiles': Icons.pets_rounded,
+    'wild': Icons.pets_rounded,
+    'emotions': Icons.mood_rounded,
+    'gems': Icons.diamond_rounded,
+    'continents': Icons.public_rounded,
+    'capitals': Icons.location_city_rounded,
+    'languages': Icons.translate_rounded,
+    'arab': Icons.flag_rounded,
+    'organs': Icons.favorite_rounded,
+    // Advanced / academic categories (adult content).
+    'science': Icons.science_rounded,
+    'geography': Icons.terrain_rounded,
+    'literature': Icons.menu_book_rounded,
+    'economics': Icons.trending_up_rounded,
+    'medicine': Icons.medical_services_rounded,
+    'philosophy': Icons.psychology_rounded,
+    'chemistry': Icons.bubble_chart_rounded,
+    'astronomy': Icons.auto_awesome_rounded,
+    'law': Icons.gavel_rounded,
+    'physics': Icons.bolt_rounded,
+    'history': Icons.history_edu_rounded,
+    'mathematics': Icons.calculate_rounded,
   };
   return map[id] ?? Icons.category_rounded;
 }
@@ -2020,18 +2052,32 @@ class _CardFace extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                 child: Center(
-                  child: Text(
-                    card.label,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: GameTextStyles.cardLabel.copyWith(
-                      color: textColor,
-                      fontSize: 14,
-                      height: 1.15,
-                      letterSpacing: 0.1,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (card.emoji != null) ...[
+                        Text(
+                          card.emoji!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 26, height: 1.0),
+                        ),
+                        const SizedBox(height: 3),
+                      ],
+                      Text(
+                        card.label,
+                        maxLines: card.emoji != null ? 2 : 3,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: GameTextStyles.cardLabel.copyWith(
+                          color: textColor,
+                          fontSize: card.emoji != null ? 13 : 14,
+                          height: 1.15,
+                          letterSpacing: 0.1,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

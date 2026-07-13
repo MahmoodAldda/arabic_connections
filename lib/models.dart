@@ -16,17 +16,24 @@ class WordItem {
     required this.id,
     required this.text,
     required this.categoryId,
+    this.emoji,
   });
 
   final String id;
   final String text;
   final String categoryId;
 
+  /// Optional picture for the card, shown above the word (e.g. "🍎"). When null
+  /// the card is text-only.
+  final String? emoji;
+
   factory WordItem.fromJson(Map<String, dynamic> json) {
+    final emoji = json['emoji'] as String?;
     return WordItem(
       id: json['id'] as String,
       text: json['text'] as String,
       categoryId: json['categoryId'] as String,
+      emoji: (emoji != null && emoji.isNotEmpty) ? emoji : null,
     );
   }
 
@@ -34,6 +41,7 @@ class WordItem {
         'id': id,
         'text': text,
         'categoryId': categoryId,
+        if (emoji != null) 'emoji': emoji,
       };
 
   @override

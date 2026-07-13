@@ -197,6 +197,639 @@
         { "id": "w23", "text": "هندي", "categoryId": "oceans" },
         { "id": "w24", "text": "متجمد", "categoryId": "oceans" }
       ]
+    },
+    {
+      "number": 7,
+      "title": "أشكال ويوميات",
+      "categories": [
+        { "id": "shapes", "name": "أشكال", "color": "#7B68EE" },
+        { "id": "days", "name": "أيام", "color": "#4EA8DE" },
+        { "id": "furniture", "name": "أثاث", "color": "#F4A261" }
+      ],
+      "words": [
+        { "id": "w1", "text": "مربع", "categoryId": "shapes" },
+        { "id": "w2", "text": "دائرة", "categoryId": "shapes" },
+        { "id": "w3", "text": "مثلث", "categoryId": "shapes" },
+        { "id": "w4", "text": "مستطيل", "categoryId": "shapes" },
+        { "id": "w5", "text": "أحد", "categoryId": "days" },
+        { "id": "w6", "text": "اثنين", "categoryId": "days" },
+        { "id": "w7", "text": "ثلاثاء", "categoryId": "days" },
+        { "id": "w8", "text": "أربعاء", "categoryId": "days" },
+        { "id": "w9", "text": "كرسي", "categoryId": "furniture" },
+        { "id": "w10", "text": "طاولة", "categoryId": "furniture" },
+        { "id": "w11", "text": "سرير", "categoryId": "furniture" },
+        { "id": "w12", "text": "خزانة", "categoryId": "furniture" }
+      ]
+    },
+    {
+      "number": 8,
+      "title": "من المطبخ",
+      "categories": [
+        { "id": "kitchen", "name": "أدوات مطبخ", "color": "#78909C" },
+        { "id": "sweets", "name": "حلويات", "color": "#E0567A" },
+        { "id": "spices", "name": "توابل", "color": "#F4A261" }
+      ],
+      "words": [
+        { "id": "w1", "text": "ملعقة", "categoryId": "kitchen" },
+        { "id": "w2", "text": "شوكة", "categoryId": "kitchen" },
+        { "id": "w3", "text": "سكين", "categoryId": "kitchen" },
+        { "id": "w4", "text": "صحن", "categoryId": "kitchen" },
+        { "id": "w5", "text": "بقلاوة", "categoryId": "sweets" },
+        { "id": "w6", "text": "كنافة", "categoryId": "sweets" },
+        { "id": "w7", "text": "بسبوسة", "categoryId": "sweets" },
+        { "id": "w8", "text": "معمول", "categoryId": "sweets" },
+        { "id": "w9", "text": "فلفل", "categoryId": "spices" },
+        { "id": "w10", "text": "كمون", "categoryId": "spices" },
+        { "id": "w11", "text": "قرفة", "categoryId": "spices" },
+        { "id": "w12", "text": "زعتر", "categoryId": "spices" }
+      ]
+    },
+    {
+      "number": 9,
+      "title": "عالم الحيوان",
+      "categories": [
+        { "id": "fish", "name": "أسماك", "color": "#1CB0F6" },
+        { "id": "reptiles", "name": "زواحف", "color": "#8AB17D" },
+        { "id": "sea", "name": "كائنات بحرية", "color": "#26A69A" },
+        { "id": "wild", "name": "حيوانات برية", "color": "#E76F51" }
+      ],
+      "words": [
+        { "id": "w1", "text": "سلمون", "categoryId": "fish" },
+        { "id": "w2", "text": "تونة", "categoryId": "fish" },
+        { "id": "w3", "text": "سردين", "categoryId": "fish" },
+        { "id": "w4", "text": "هامور", "categoryId": "fish" },
+        { "id": "w5", "text": "ثعبان", "categoryId": "reptiles" },
+        { "id": "w6", "text": "تمساح", "categoryId": "reptiles" },
+        { "id": "w7", "text": "سحلية", "categoryId": "reptiles" },
+        { "id": "w8", "text": "حرباء", "categoryId": "reptiles" },
+        { "id": "w9", "text": "حوت", "categoryId": "sea" },
+        { "id": "w10", "text": "دولفين", "categoryId": "sea" },
+        { "id": "w11", "text": "سلحفاة", "categoryId": "sea" },
+        { "id": "w12", "text": "أخطبوط", "categoryId": "sea" },
+        { "id": "w13", "text": "نمر", "categoryId": "wild" },
+        { "id": "w14", "text": "فهد", "categoryId": "wild" },
+        { "id": "w15", "text": "ذئب", "categoryId": "wild" },
+        { "id": "w16", "text": "دب", "categoryId": "wild" }
+      ]
+    },
+    {
+      "number": 10,
+      "title": "حول العالم",
+      "categories": [
+        { "id": "continents", "name": "قارات", "color": "#5C6BC0" },
+        { "id": "capitals", "name": "عواصم", "color": "#AB47BC" },
+        { "id": "languages", "name": "لغات", "color": "#26A69A" },
+        { "id": "arab", "name": "دول عربية", "color": "#E9C46A" }
+      ],
+      "words": [
+        { "id": "w1", "text": "آسيا", "categoryId": "continents" },
+        { "id": "w2", "text": "أفريقيا", "categoryId": "continents" },
+        { "id": "w3", "text": "أوروبا", "categoryId": "continents" },
+        { "id": "w4", "text": "أستراليا", "categoryId": "continents" },
+        { "id": "w5", "text": "القاهرة", "categoryId": "capitals" },
+        { "id": "w6", "text": "الرياض", "categoryId": "capitals" },
+        { "id": "w7", "text": "بغداد", "categoryId": "capitals" },
+        { "id": "w8", "text": "دمشق", "categoryId": "capitals" },
+        { "id": "w9", "text": "عربية", "categoryId": "languages" },
+        { "id": "w10", "text": "إنجليزية", "categoryId": "languages" },
+        { "id": "w11", "text": "فرنسية", "categoryId": "languages" },
+        { "id": "w12", "text": "صينية", "categoryId": "languages" },
+        { "id": "w13", "text": "الجزائر", "categoryId": "arab" },
+        { "id": "w14", "text": "السودان", "categoryId": "arab" },
+        { "id": "w15", "text": "الكويت", "categoryId": "arab" },
+        { "id": "w16", "text": "اليمن", "categoryId": "arab" }
+      ]
+    },
+    {
+      "number": 11,
+      "title": "مشاعر وحواس",
+      "categories": [
+        { "id": "emotions", "name": "مشاعر", "color": "#E0567A" },
+        { "id": "colors", "name": "ألوان", "color": "#E9C46A" },
+        { "id": "numbers", "name": "أرقام", "color": "#7B68EE" },
+        { "id": "senses", "name": "حواس", "color": "#E76F51" }
+      ],
+      "words": [
+        { "id": "w1", "text": "فرح", "categoryId": "emotions" },
+        { "id": "w2", "text": "حزن", "categoryId": "emotions" },
+        { "id": "w3", "text": "خوف", "categoryId": "emotions" },
+        { "id": "w4", "text": "غضب", "categoryId": "emotions" },
+        { "id": "w5", "text": "أحمر", "categoryId": "colors" },
+        { "id": "w6", "text": "أزرق", "categoryId": "colors" },
+        { "id": "w7", "text": "أخضر", "categoryId": "colors" },
+        { "id": "w8", "text": "أصفر", "categoryId": "colors" },
+        { "id": "w9", "text": "واحد", "categoryId": "numbers" },
+        { "id": "w10", "text": "اثنان", "categoryId": "numbers" },
+        { "id": "w11", "text": "ثلاثة", "categoryId": "numbers" },
+        { "id": "w12", "text": "أربعة", "categoryId": "numbers" },
+        { "id": "w13", "text": "بصر", "categoryId": "senses" },
+        { "id": "w14", "text": "سمع", "categoryId": "senses" },
+        { "id": "w15", "text": "شم", "categoryId": "senses" },
+        { "id": "w16", "text": "لمس", "categoryId": "senses" }
+      ]
+    },
+    {
+      "number": 12,
+      "title": "كنوز الكون",
+      "categories": [
+        { "id": "gems", "name": "جواهر", "color": "#CE82FF" },
+        { "id": "metals", "name": "معادن", "color": "#78909C" },
+        { "id": "planets", "name": "كواكب", "color": "#5C6BC0" },
+        { "id": "space", "name": "فضاء", "color": "#4EA8DE" },
+        { "id": "oceans", "name": "محيطات", "color": "#1CB0F6" }
+      ],
+      "words": [
+        { "id": "w1", "text": "ماس", "categoryId": "gems" },
+        { "id": "w2", "text": "ياقوت", "categoryId": "gems" },
+        { "id": "w3", "text": "زمرد", "categoryId": "gems" },
+        { "id": "w4", "text": "لؤلؤ", "categoryId": "gems" },
+        { "id": "w5", "text": "ذهب", "categoryId": "metals" },
+        { "id": "w6", "text": "فضة", "categoryId": "metals" },
+        { "id": "w7", "text": "حديد", "categoryId": "metals" },
+        { "id": "w8", "text": "نحاس", "categoryId": "metals" },
+        { "id": "w9", "text": "مريخ", "categoryId": "planets" },
+        { "id": "w10", "text": "زهرة", "categoryId": "planets" },
+        { "id": "w11", "text": "عطارد", "categoryId": "planets" },
+        { "id": "w12", "text": "زحل", "categoryId": "planets" },
+        { "id": "w13", "text": "نجم", "categoryId": "space" },
+        { "id": "w14", "text": "قمر", "categoryId": "space" },
+        { "id": "w15", "text": "مذنب", "categoryId": "space" },
+        { "id": "w16", "text": "مجرة", "categoryId": "space" },
+        { "id": "w17", "text": "هادئ", "categoryId": "oceans" },
+        { "id": "w18", "text": "أطلسي", "categoryId": "oceans" },
+        { "id": "w19", "text": "هندي", "categoryId": "oceans" },
+        { "id": "w20", "text": "متجمد", "categoryId": "oceans" }
+      ]
+    },
+    {
+      "number": 13,
+      "title": "مائدة لذيذة",
+      "categories": [
+        { "id": "sweets", "name": "حلويات", "color": "#E0567A" },
+        { "id": "drinks", "name": "مشروبات", "color": "#F4A261" },
+        { "id": "food", "name": "طعام", "color": "#FF9600" },
+        { "id": "vegetables", "name": "خضروات", "color": "#58CC02" },
+        { "id": "fruits", "name": "فواكه", "color": "#E76F51" }
+      ],
+      "words": [
+        { "id": "w1", "text": "بقلاوة", "categoryId": "sweets" },
+        { "id": "w2", "text": "كنافة", "categoryId": "sweets" },
+        { "id": "w3", "text": "بسبوسة", "categoryId": "sweets" },
+        { "id": "w4", "text": "معمول", "categoryId": "sweets" },
+        { "id": "w5", "text": "ماء", "categoryId": "drinks" },
+        { "id": "w6", "text": "حليب", "categoryId": "drinks" },
+        { "id": "w7", "text": "شاي", "categoryId": "drinks" },
+        { "id": "w8", "text": "قهوة", "categoryId": "drinks" },
+        { "id": "w9", "text": "خبز", "categoryId": "food" },
+        { "id": "w10", "text": "أرز", "categoryId": "food" },
+        { "id": "w11", "text": "لحم", "categoryId": "food" },
+        { "id": "w12", "text": "جبن", "categoryId": "food" },
+        { "id": "w13", "text": "جزر", "categoryId": "vegetables" },
+        { "id": "w14", "text": "بطاطا", "categoryId": "vegetables" },
+        { "id": "w15", "text": "طماطم", "categoryId": "vegetables" },
+        { "id": "w16", "text": "خيار", "categoryId": "vegetables" },
+        { "id": "w17", "text": "تفاح", "categoryId": "fruits" },
+        { "id": "w18", "text": "موز", "categoryId": "fruits" },
+        { "id": "w19", "text": "عنب", "categoryId": "fruits" },
+        { "id": "w20", "text": "برتقال", "categoryId": "fruits" }
+      ]
+    },
+    {
+      "number": 14,
+      "title": "مدرسة وعمل",
+      "categories": [
+        { "id": "tools", "name": "أدوات", "color": "#78909C" },
+        { "id": "school", "name": "مدرسة", "color": "#5C6BC0" },
+        { "id": "jobs", "name": "مهن", "color": "#AB47BC" },
+        { "id": "transport", "name": "مواصلات", "color": "#26A69A" },
+        { "id": "sports", "name": "رياضة", "color": "#E76F51" }
+      ],
+      "words": [
+        { "id": "w1", "text": "مطرقة", "categoryId": "tools" },
+        { "id": "w2", "text": "منشار", "categoryId": "tools" },
+        { "id": "w3", "text": "مفك", "categoryId": "tools" },
+        { "id": "w4", "text": "مسمار", "categoryId": "tools" },
+        { "id": "w5", "text": "كتاب", "categoryId": "school" },
+        { "id": "w6", "text": "قلم", "categoryId": "school" },
+        { "id": "w7", "text": "ممحاة", "categoryId": "school" },
+        { "id": "w8", "text": "دفتر", "categoryId": "school" },
+        { "id": "w9", "text": "طبيب", "categoryId": "jobs" },
+        { "id": "w10", "text": "معلم", "categoryId": "jobs" },
+        { "id": "w11", "text": "مهندس", "categoryId": "jobs" },
+        { "id": "w12", "text": "طيار", "categoryId": "jobs" },
+        { "id": "w13", "text": "سيارة", "categoryId": "transport" },
+        { "id": "w14", "text": "قطار", "categoryId": "transport" },
+        { "id": "w15", "text": "طائرة", "categoryId": "transport" },
+        { "id": "w16", "text": "دراجة", "categoryId": "transport" },
+        { "id": "w17", "text": "كرة", "categoryId": "sports" },
+        { "id": "w18", "text": "سباحة", "categoryId": "sports" },
+        { "id": "w19", "text": "تنس", "categoryId": "sports" },
+        { "id": "w20", "text": "ملاكمة", "categoryId": "sports" }
+      ]
+    },
+    {
+      "number": 15,
+      "title": "أساسيات متنوعة",
+      "categories": [
+        { "id": "shapes", "name": "أشكال", "color": "#7B68EE" },
+        { "id": "colors", "name": "ألوان", "color": "#E9C46A" },
+        { "id": "numbers", "name": "أرقام", "color": "#CE82FF" },
+        { "id": "days", "name": "أيام", "color": "#4EA8DE" },
+        { "id": "months", "name": "شهور", "color": "#F4A261" },
+        { "id": "seasons", "name": "فصول", "color": "#FF9600" }
+      ],
+      "words": [
+        { "id": "w1", "text": "مربع", "categoryId": "shapes" },
+        { "id": "w2", "text": "دائرة", "categoryId": "shapes" },
+        { "id": "w3", "text": "مثلث", "categoryId": "shapes" },
+        { "id": "w4", "text": "مستطيل", "categoryId": "shapes" },
+        { "id": "w5", "text": "أحمر", "categoryId": "colors" },
+        { "id": "w6", "text": "أزرق", "categoryId": "colors" },
+        { "id": "w7", "text": "أخضر", "categoryId": "colors" },
+        { "id": "w8", "text": "أصفر", "categoryId": "colors" },
+        { "id": "w9", "text": "واحد", "categoryId": "numbers" },
+        { "id": "w10", "text": "اثنان", "categoryId": "numbers" },
+        { "id": "w11", "text": "ثلاثة", "categoryId": "numbers" },
+        { "id": "w12", "text": "أربعة", "categoryId": "numbers" },
+        { "id": "w13", "text": "أحد", "categoryId": "days" },
+        { "id": "w14", "text": "اثنين", "categoryId": "days" },
+        { "id": "w15", "text": "ثلاثاء", "categoryId": "days" },
+        { "id": "w16", "text": "أربعاء", "categoryId": "days" },
+        { "id": "w17", "text": "يناير", "categoryId": "months" },
+        { "id": "w18", "text": "فبراير", "categoryId": "months" },
+        { "id": "w19", "text": "مارس", "categoryId": "months" },
+        { "id": "w20", "text": "أبريل", "categoryId": "months" },
+        { "id": "w21", "text": "شتاء", "categoryId": "seasons" },
+        { "id": "w22", "text": "صيف", "categoryId": "seasons" },
+        { "id": "w23", "text": "خريف", "categoryId": "seasons" },
+        { "id": "w24", "text": "ربيع", "categoryId": "seasons" }
+      ]
+    },
+    {
+      "number": 16,
+      "title": "مملكة الكائنات",
+      "categories": [
+        { "id": "fish", "name": "أسماك", "color": "#1CB0F6" },
+        { "id": "birds", "name": "طيور", "color": "#E9C46A" },
+        { "id": "insects", "name": "حشرات", "color": "#8AB17D" },
+        { "id": "wild", "name": "حيوانات برية", "color": "#E76F51" },
+        { "id": "sea", "name": "كائنات بحرية", "color": "#26A69A" },
+        { "id": "reptiles", "name": "زواحف", "color": "#58CC02" }
+      ],
+      "words": [
+        { "id": "w1", "text": "سلمون", "categoryId": "fish" },
+        { "id": "w2", "text": "تونة", "categoryId": "fish" },
+        { "id": "w3", "text": "سردين", "categoryId": "fish" },
+        { "id": "w4", "text": "هامور", "categoryId": "fish" },
+        { "id": "w5", "text": "نسر", "categoryId": "birds" },
+        { "id": "w6", "text": "حمامة", "categoryId": "birds" },
+        { "id": "w7", "text": "بلبل", "categoryId": "birds" },
+        { "id": "w8", "text": "صقر", "categoryId": "birds" },
+        { "id": "w9", "text": "نحلة", "categoryId": "insects" },
+        { "id": "w10", "text": "نملة", "categoryId": "insects" },
+        { "id": "w11", "text": "فراشة", "categoryId": "insects" },
+        { "id": "w12", "text": "بعوضة", "categoryId": "insects" },
+        { "id": "w13", "text": "نمر", "categoryId": "wild" },
+        { "id": "w14", "text": "فهد", "categoryId": "wild" },
+        { "id": "w15", "text": "ذئب", "categoryId": "wild" },
+        { "id": "w16", "text": "دب", "categoryId": "wild" },
+        { "id": "w17", "text": "حوت", "categoryId": "sea" },
+        { "id": "w18", "text": "دولفين", "categoryId": "sea" },
+        { "id": "w19", "text": "سلحفاة", "categoryId": "sea" },
+        { "id": "w20", "text": "أخطبوط", "categoryId": "sea" },
+        { "id": "w21", "text": "ثعبان", "categoryId": "reptiles" },
+        { "id": "w22", "text": "تمساح", "categoryId": "reptiles" },
+        { "id": "w23", "text": "سحلية", "categoryId": "reptiles" },
+        { "id": "w24", "text": "حرباء", "categoryId": "reptiles" }
+      ]
+    },
+    {
+      "number": 17,
+      "title": "لغات وتقويم",
+      "categories": [
+        { "id": "months", "name": "شهور", "color": "#F4A261" },
+        { "id": "languages", "name": "لغات", "color": "#26A69A" },
+        { "id": "capitals", "name": "عواصم", "color": "#AB47BC" }
+      ],
+      "words": [
+        { "id": "w1", "text": "مايو", "categoryId": "months" },
+        { "id": "w2", "text": "يونيو", "categoryId": "months" },
+        { "id": "w3", "text": "يوليو", "categoryId": "months" },
+        { "id": "w4", "text": "أغسطس", "categoryId": "months" },
+        { "id": "w5", "text": "عربية", "categoryId": "languages" },
+        { "id": "w6", "text": "إنجليزية", "categoryId": "languages" },
+        { "id": "w7", "text": "فرنسية", "categoryId": "languages" },
+        { "id": "w8", "text": "صينية", "categoryId": "languages" },
+        { "id": "w9", "text": "القاهرة", "categoryId": "capitals" },
+        { "id": "w10", "text": "الرياض", "categoryId": "capitals" },
+        { "id": "w11", "text": "بغداد", "categoryId": "capitals" },
+        { "id": "w12", "text": "دمشق", "categoryId": "capitals" }
+      ]
+    },
+    {
+      "number": 18,
+      "title": "في المنزل",
+      "categories": [
+        { "id": "furniture", "name": "أثاث", "color": "#F4A261" },
+        { "id": "kitchen", "name": "أدوات مطبخ", "color": "#78909C" },
+        { "id": "clothes", "name": "ملابس", "color": "#7B68EE" },
+        { "id": "tools", "name": "أدوات", "color": "#5C6BC0" }
+      ],
+      "words": [
+        { "id": "w1", "text": "كرسي", "categoryId": "furniture" },
+        { "id": "w2", "text": "طاولة", "categoryId": "furniture" },
+        { "id": "w3", "text": "سرير", "categoryId": "furniture" },
+        { "id": "w4", "text": "خزانة", "categoryId": "furniture" },
+        { "id": "w5", "text": "ملعقة", "categoryId": "kitchen" },
+        { "id": "w6", "text": "شوكة", "categoryId": "kitchen" },
+        { "id": "w7", "text": "سكين", "categoryId": "kitchen" },
+        { "id": "w8", "text": "صحن", "categoryId": "kitchen" },
+        { "id": "w9", "text": "قميص", "categoryId": "clothes" },
+        { "id": "w10", "text": "حذاء", "categoryId": "clothes" },
+        { "id": "w11", "text": "قبعة", "categoryId": "clothes" },
+        { "id": "w12", "text": "معطف", "categoryId": "clothes" },
+        { "id": "w13", "text": "مطرقة", "categoryId": "tools" },
+        { "id": "w14", "text": "منشار", "categoryId": "tools" },
+        { "id": "w15", "text": "مفك", "categoryId": "tools" },
+        { "id": "w16", "text": "مسمار", "categoryId": "tools" }
+      ]
+    },
+    {
+      "number": 19,
+      "title": "جسم الإنسان",
+      "categories": [
+        { "id": "emotions", "name": "مشاعر", "color": "#E0567A" },
+        { "id": "family", "name": "عائلة", "color": "#E76F51" },
+        { "id": "body", "name": "جسم", "color": "#8AB17D" },
+        { "id": "organs", "name": "أعضاء", "color": "#AB47BC" },
+        { "id": "senses", "name": "حواس", "color": "#FF9600" }
+      ],
+      "words": [
+        { "id": "w1", "text": "فرح", "categoryId": "emotions" },
+        { "id": "w2", "text": "حزن", "categoryId": "emotions" },
+        { "id": "w3", "text": "خوف", "categoryId": "emotions" },
+        { "id": "w4", "text": "غضب", "categoryId": "emotions" },
+        { "id": "w5", "text": "أب", "categoryId": "family" },
+        { "id": "w6", "text": "أم", "categoryId": "family" },
+        { "id": "w7", "text": "أخ", "categoryId": "family" },
+        { "id": "w8", "text": "أخت", "categoryId": "family" },
+        { "id": "w9", "text": "يد", "categoryId": "body" },
+        { "id": "w10", "text": "عين", "categoryId": "body" },
+        { "id": "w11", "text": "أذن", "categoryId": "body" },
+        { "id": "w12", "text": "قلب", "categoryId": "body" },
+        { "id": "w13", "text": "كبد", "categoryId": "organs" },
+        { "id": "w14", "text": "رئة", "categoryId": "organs" },
+        { "id": "w15", "text": "كلية", "categoryId": "organs" },
+        { "id": "w16", "text": "معدة", "categoryId": "organs" },
+        { "id": "w17", "text": "بصر", "categoryId": "senses" },
+        { "id": "w18", "text": "سمع", "categoryId": "senses" },
+        { "id": "w19", "text": "شم", "categoryId": "senses" },
+        { "id": "w20", "text": "لمس", "categoryId": "senses" }
+      ]
+    },
+    {
+      "number": 20,
+      "title": "رحلة حول الأرض",
+      "categories": [
+        { "id": "continents", "name": "قارات", "color": "#5C6BC0" },
+        { "id": "capitals", "name": "عواصم", "color": "#AB47BC" },
+        { "id": "arab", "name": "دول عربية", "color": "#E9C46A" },
+        { "id": "languages", "name": "لغات", "color": "#26A69A" },
+        { "id": "oceans", "name": "محيطات", "color": "#1CB0F6" },
+        { "id": "rivers", "name": "أنهار", "color": "#4EA8DE" }
+      ],
+      "words": [
+        { "id": "w1", "text": "آسيا", "categoryId": "continents" },
+        { "id": "w2", "text": "أفريقيا", "categoryId": "continents" },
+        { "id": "w3", "text": "أوروبا", "categoryId": "continents" },
+        { "id": "w4", "text": "أمريكا", "categoryId": "continents" },
+        { "id": "w5", "text": "القاهرة", "categoryId": "capitals" },
+        { "id": "w6", "text": "الرياض", "categoryId": "capitals" },
+        { "id": "w7", "text": "بغداد", "categoryId": "capitals" },
+        { "id": "w8", "text": "عمّان", "categoryId": "capitals" },
+        { "id": "w9", "text": "الجزائر", "categoryId": "arab" },
+        { "id": "w10", "text": "السودان", "categoryId": "arab" },
+        { "id": "w11", "text": "الكويت", "categoryId": "arab" },
+        { "id": "w12", "text": "اليمن", "categoryId": "arab" },
+        { "id": "w13", "text": "عربية", "categoryId": "languages" },
+        { "id": "w14", "text": "إنجليزية", "categoryId": "languages" },
+        { "id": "w15", "text": "فرنسية", "categoryId": "languages" },
+        { "id": "w16", "text": "صينية", "categoryId": "languages" },
+        { "id": "w17", "text": "هادئ", "categoryId": "oceans" },
+        { "id": "w18", "text": "أطلسي", "categoryId": "oceans" },
+        { "id": "w19", "text": "هندي", "categoryId": "oceans" },
+        { "id": "w20", "text": "متجمد", "categoryId": "oceans" },
+        { "id": "w21", "text": "نيل", "categoryId": "rivers" },
+        { "id": "w22", "text": "دجلة", "categoryId": "rivers" },
+        { "id": "w23", "text": "فرات", "categoryId": "rivers" },
+        { "id": "w24", "text": "أردن", "categoryId": "rivers" }
+      ]
+    },
+    {
+      "number": 21,
+      "title": "صور ممتعة",
+      "categories": [
+        { "id": "fruits", "name": "فواكه", "color": "#E76F51" },
+        { "id": "animals", "name": "حيوانات", "color": "#2A9D8F" },
+        { "id": "transport", "name": "مواصلات", "color": "#26A69A" }
+      ],
+      "words": [
+        { "id": "w1", "text": "تفاح", "categoryId": "fruits", "emoji": "🍎" },
+        { "id": "w2", "text": "موز", "categoryId": "fruits", "emoji": "🍌" },
+        { "id": "w3", "text": "عنب", "categoryId": "fruits", "emoji": "🍇" },
+        { "id": "w4", "text": "برتقال", "categoryId": "fruits", "emoji": "🍊" },
+        { "id": "w5", "text": "قطة", "categoryId": "animals", "emoji": "🐱" },
+        { "id": "w6", "text": "كلب", "categoryId": "animals", "emoji": "🐶" },
+        { "id": "w7", "text": "حصان", "categoryId": "animals", "emoji": "🐴" },
+        { "id": "w8", "text": "أسد", "categoryId": "animals", "emoji": "🦁" },
+        { "id": "w9", "text": "سيارة", "categoryId": "transport", "emoji": "🚗" },
+        { "id": "w10", "text": "قطار", "categoryId": "transport", "emoji": "🚆" },
+        { "id": "w11", "text": "طائرة", "categoryId": "transport", "emoji": "✈️" },
+        { "id": "w12", "text": "دراجة", "categoryId": "transport", "emoji": "🚲" }
+      ]
+    },
+    {
+      "number": 22,
+      "title": "صور من الحياة",
+      "categories": [
+        { "id": "vegetables", "name": "خضروات", "color": "#58CC02" },
+        { "id": "weather", "name": "طقس", "color": "#4EA8DE" },
+        { "id": "sports", "name": "رياضة", "color": "#E76F51" },
+        { "id": "food", "name": "طعام", "color": "#F4A261" }
+      ],
+      "words": [
+        { "id": "w1", "text": "جزر", "categoryId": "vegetables", "emoji": "🥕" },
+        { "id": "w2", "text": "بطاطا", "categoryId": "vegetables", "emoji": "🥔" },
+        { "id": "w3", "text": "طماطم", "categoryId": "vegetables", "emoji": "🍅" },
+        { "id": "w4", "text": "خيار", "categoryId": "vegetables", "emoji": "🥒" },
+        { "id": "w5", "text": "شمس", "categoryId": "weather", "emoji": "☀️" },
+        { "id": "w6", "text": "مطر", "categoryId": "weather", "emoji": "🌧️" },
+        { "id": "w7", "text": "ريح", "categoryId": "weather", "emoji": "💨" },
+        { "id": "w8", "text": "ثلج", "categoryId": "weather", "emoji": "❄️" },
+        { "id": "w9", "text": "كرة", "categoryId": "sports", "emoji": "⚽" },
+        { "id": "w10", "text": "سباحة", "categoryId": "sports", "emoji": "🏊" },
+        { "id": "w11", "text": "تنس", "categoryId": "sports", "emoji": "🎾" },
+        { "id": "w12", "text": "ملاكمة", "categoryId": "sports", "emoji": "🥊" },
+        { "id": "w13", "text": "خبز", "categoryId": "food", "emoji": "🍞" },
+        { "id": "w14", "text": "أرز", "categoryId": "food", "emoji": "🍚" },
+        { "id": "w15", "text": "لحم", "categoryId": "food", "emoji": "🍖" },
+        { "id": "w16", "text": "جبن", "categoryId": "food", "emoji": "🧀" }
+      ]
+    },
+    {
+      "number": 23,
+      "title": "صور الطبيعة",
+      "categories": [
+        { "id": "sea", "name": "كائنات بحرية", "color": "#1CB0F6" },
+        { "id": "insects", "name": "حشرات", "color": "#8AB17D" },
+        { "id": "birds", "name": "طيور", "color": "#E9C46A" },
+        { "id": "drinks", "name": "مشروبات", "color": "#F4A261" }
+      ],
+      "words": [
+        { "id": "w1", "text": "حوت", "categoryId": "sea", "emoji": "🐳" },
+        { "id": "w2", "text": "دولفين", "categoryId": "sea", "emoji": "🐬" },
+        { "id": "w3", "text": "سلحفاة", "categoryId": "sea", "emoji": "🐢" },
+        { "id": "w4", "text": "أخطبوط", "categoryId": "sea", "emoji": "🐙" },
+        { "id": "w5", "text": "نحلة", "categoryId": "insects", "emoji": "🐝" },
+        { "id": "w6", "text": "نملة", "categoryId": "insects", "emoji": "🐜" },
+        { "id": "w7", "text": "فراشة", "categoryId": "insects", "emoji": "🦋" },
+        { "id": "w8", "text": "بعوضة", "categoryId": "insects", "emoji": "🦟" },
+        { "id": "w9", "text": "نسر", "categoryId": "birds", "emoji": "🦅" },
+        { "id": "w10", "text": "حمامة", "categoryId": "birds", "emoji": "🕊️" },
+        { "id": "w11", "text": "عصفور", "categoryId": "birds", "emoji": "🐦" },
+        { "id": "w12", "text": "بطة", "categoryId": "birds", "emoji": "🦆" },
+        { "id": "w13", "text": "ماء", "categoryId": "drinks", "emoji": "💧" },
+        { "id": "w14", "text": "حليب", "categoryId": "drinks", "emoji": "🥛" },
+        { "id": "w15", "text": "شاي", "categoryId": "drinks", "emoji": "🍵" },
+        { "id": "w16", "text": "قهوة", "categoryId": "drinks", "emoji": "☕" }
+      ]
+    },
+    {
+      "number": 24,
+      "title": "معرفة متقدمة",
+      "categories": [
+        { "id": "science", "name": "علوم", "color": "#26A69A" },
+        { "id": "geography", "name": "جغرافيا", "color": "#78909C" },
+        { "id": "literature", "name": "أدب", "color": "#AB47BC" },
+        { "id": "economics", "name": "اقتصاد", "color": "#F4A261" }
+      ],
+      "words": [
+        { "id": "w1", "text": "ذرّة", "categoryId": "science" },
+        { "id": "w2", "text": "جزيء", "categoryId": "science" },
+        { "id": "w3", "text": "خلية", "categoryId": "science" },
+        { "id": "w4", "text": "طاقة", "categoryId": "science" },
+        { "id": "w5", "text": "هضبة", "categoryId": "geography" },
+        { "id": "w6", "text": "وادي", "categoryId": "geography" },
+        { "id": "w7", "text": "مضيق", "categoryId": "geography" },
+        { "id": "w8", "text": "أرخبيل", "categoryId": "geography" },
+        { "id": "w9", "text": "رواية", "categoryId": "literature" },
+        { "id": "w10", "text": "قصيدة", "categoryId": "literature" },
+        { "id": "w11", "text": "ملحمة", "categoryId": "literature" },
+        { "id": "w12", "text": "سيرة", "categoryId": "literature" },
+        { "id": "w13", "text": "تضخّم", "categoryId": "economics" },
+        { "id": "w14", "text": "ركود", "categoryId": "economics" },
+        { "id": "w15", "text": "عرض", "categoryId": "economics" },
+        { "id": "w16", "text": "طلب", "categoryId": "economics" }
+      ]
+    },
+    {
+      "number": 25,
+      "title": "تحدٍّ فكري",
+      "categories": [
+        { "id": "medicine", "name": "طب", "color": "#E0567A" },
+        { "id": "philosophy", "name": "فلسفة", "color": "#5C6BC0" },
+        { "id": "chemistry", "name": "كيمياء", "color": "#58CC02" },
+        { "id": "astronomy", "name": "فلك", "color": "#4EA8DE" }
+      ],
+      "words": [
+        { "id": "w1", "text": "جراحة", "categoryId": "medicine" },
+        { "id": "w2", "text": "مناعة", "categoryId": "medicine" },
+        { "id": "w3", "text": "لقاح", "categoryId": "medicine" },
+        { "id": "w4", "text": "تشخيص", "categoryId": "medicine" },
+        { "id": "w5", "text": "منطق", "categoryId": "philosophy" },
+        { "id": "w6", "text": "وجود", "categoryId": "philosophy" },
+        { "id": "w7", "text": "أخلاق", "categoryId": "philosophy" },
+        { "id": "w8", "text": "معرفة", "categoryId": "philosophy" },
+        { "id": "w9", "text": "حمض", "categoryId": "chemistry" },
+        { "id": "w10", "text": "قاعدة", "categoryId": "chemistry" },
+        { "id": "w11", "text": "تفاعل", "categoryId": "chemistry" },
+        { "id": "w12", "text": "عنصر", "categoryId": "chemistry" },
+        { "id": "w13", "text": "سديم", "categoryId": "astronomy" },
+        { "id": "w14", "text": "مذنّب", "categoryId": "astronomy" },
+        { "id": "w15", "text": "كسوف", "categoryId": "astronomy" },
+        { "id": "w16", "text": "مدار", "categoryId": "astronomy" }
+      ]
+    },
+    {
+      "number": 26,
+      "title": "عقول كبيرة",
+      "categories": [
+        { "id": "law", "name": "قانون", "color": "#78909C" },
+        { "id": "physics", "name": "فيزياء", "color": "#7B68EE" },
+        { "id": "history", "name": "تاريخ", "color": "#F4A261" },
+        { "id": "mathematics", "name": "رياضيات", "color": "#26A69A" },
+        { "id": "science", "name": "علوم", "color": "#AB47BC" }
+      ],
+      "words": [
+        { "id": "w1", "text": "دستور", "categoryId": "law" },
+        { "id": "w2", "text": "عقد", "categoryId": "law" },
+        { "id": "w3", "text": "قضاء", "categoryId": "law" },
+        { "id": "w4", "text": "تشريع", "categoryId": "law" },
+        { "id": "w5", "text": "جاذبية", "categoryId": "physics" },
+        { "id": "w6", "text": "احتكاك", "categoryId": "physics" },
+        { "id": "w7", "text": "كتلة", "categoryId": "physics" },
+        { "id": "w8", "text": "سرعة", "categoryId": "physics" },
+        { "id": "w9", "text": "حضارة", "categoryId": "history" },
+        { "id": "w10", "text": "إمبراطورية", "categoryId": "history" },
+        { "id": "w11", "text": "ثورة", "categoryId": "history" },
+        { "id": "w12", "text": "معاهدة", "categoryId": "history" },
+        { "id": "w13", "text": "جبر", "categoryId": "mathematics" },
+        { "id": "w14", "text": "هندسة", "categoryId": "mathematics" },
+        { "id": "w15", "text": "معادلة", "categoryId": "mathematics" },
+        { "id": "w16", "text": "كسر", "categoryId": "mathematics" },
+        { "id": "w17", "text": "ذرّة", "categoryId": "science" },
+        { "id": "w18", "text": "جزيء", "categoryId": "science" },
+        { "id": "w19", "text": "خلية", "categoryId": "science" },
+        { "id": "w20", "text": "طاقة", "categoryId": "science" }
+      ]
+    },
+    {
+      "number": 27,
+      "title": "أستاذ العلوم",
+      "categories": [
+        { "id": "physics", "name": "فيزياء", "color": "#7B68EE" },
+        { "id": "chemistry", "name": "كيمياء", "color": "#58CC02" },
+        { "id": "mathematics", "name": "رياضيات", "color": "#26A69A" },
+        { "id": "astronomy", "name": "فلك", "color": "#4EA8DE" },
+        { "id": "geography", "name": "جغرافيا", "color": "#78909C" },
+        { "id": "medicine", "name": "طب", "color": "#E0567A" }
+      ],
+      "words": [
+        { "id": "w1", "text": "جاذبية", "categoryId": "physics" },
+        { "id": "w2", "text": "احتكاك", "categoryId": "physics" },
+        { "id": "w3", "text": "كتلة", "categoryId": "physics" },
+        { "id": "w4", "text": "سرعة", "categoryId": "physics" },
+        { "id": "w5", "text": "حمض", "categoryId": "chemistry" },
+        { "id": "w6", "text": "قاعدة", "categoryId": "chemistry" },
+        { "id": "w7", "text": "تفاعل", "categoryId": "chemistry" },
+        { "id": "w8", "text": "عنصر", "categoryId": "chemistry" },
+        { "id": "w9", "text": "جبر", "categoryId": "mathematics" },
+        { "id": "w10", "text": "هندسة", "categoryId": "mathematics" },
+        { "id": "w11", "text": "معادلة", "categoryId": "mathematics" },
+        { "id": "w12", "text": "تكامل", "categoryId": "mathematics" },
+        { "id": "w13", "text": "سديم", "categoryId": "astronomy" },
+        { "id": "w14", "text": "مذنّب", "categoryId": "astronomy" },
+        { "id": "w15", "text": "كسوف", "categoryId": "astronomy" },
+        { "id": "w16", "text": "مدار", "categoryId": "astronomy" },
+        { "id": "w17", "text": "هضبة", "categoryId": "geography" },
+        { "id": "w18", "text": "وادي", "categoryId": "geography" },
+        { "id": "w19", "text": "مضيق", "categoryId": "geography" },
+        { "id": "w20", "text": "أرخبيل", "categoryId": "geography" },
+        { "id": "w21", "text": "جراحة", "categoryId": "medicine" },
+        { "id": "w22", "text": "مناعة", "categoryId": "medicine" },
+        { "id": "w23", "text": "لقاح", "categoryId": "medicine" },
+        { "id": "w24", "text": "تشخيص", "categoryId": "medicine" }
+      ]
     }
   ]
 }

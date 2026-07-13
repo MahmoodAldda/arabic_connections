@@ -14,20 +14,25 @@ class GameCard {
       : isCategory = false,
         id = word.id,
         categoryId = word.categoryId,
-        label = word.text;
+        label = word.text,
+        emoji = word.emoji;
 
   GameCard.category(Category category)
       : isCategory = true,
         word = null,
         id = 'cat_${category.id}',
         categoryId = category.id,
-        label = category.name;
+        label = category.name,
+        emoji = null;
 
   final WordItem? word;
   final bool isCategory;
   final String id;
   final String categoryId;
   final String label;
+
+  /// Optional picture (emoji) shown on the card face; null for text-only cards.
+  final String? emoji;
 
   @override
   bool operator ==(Object other) =>
