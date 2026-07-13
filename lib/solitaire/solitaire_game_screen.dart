@@ -164,6 +164,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   bool _showConfetti = false;
   bool _showFireworks = false;
   bool _isComplete = false;
+  bool _winHandled = false;
+  bool _stuckShown = false;
 
   String? _comboText;
   int _comboSeq = 0;
@@ -283,6 +285,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       _showConfetti = false;
       _showFireworks = false;
       _isComplete = false;
+      _winHandled = false;
+      _stuckShown = false;
       _comboText = null;
       _elapsed = Duration.zero;
       _boardGeneration++;
@@ -387,7 +391,38 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       _flashCombo(combo);
     }
 
-    if (_engine.isWon) _handleWin();
+    _afterMove();
+  }
+
+  /// After any board-changing action: end the round if won, otherwise surface a
+  /// recovery prompt if the player has hit a genuine dead end.
+  void _afterMove() {
+    if (_isComplete) return;
+    if (_engine.isWon) {
+      _handleWin();
+    } else if (_isStuck()) {
+      _showStuck();
+    }
+  }
+
+  /// True only when there is no possible progress: the deck is fully exhausted
+  /// (stock and waste empty), no card can go to a foundation, and no tableau run
+  /// can be relocated. In that case the board would otherwise sit frozen.
+  bool _isStuck() {
+    if (_engine.isWon) return false;
+    // While any card remains in the stock or waste the player can keep drawing
+    // (the waste recycles into the stock), so it's never a hard dead end.
+    if (_engine.stockCount > 0 || _engine.wasteTop != null) return false;
+    if (_engine.suggestMove() != null) return false;
+    for (var c = 0; c < _engine.columns.length; c++) {
+      for (var i = 0; i < _engine.columns[c].length; i++) {
+        if (_engine.runLength(c, i) == 0) continue;
+        for (var d = 0; d < _engine.columns.length; d++) {
+          if (d != c && _engine.canMoveRun(c, i, d)) return false;
+        }
+      }
+    }
+    return true;
   }
 
   /// Whether [ref] can be dropped on tableau column [col]. Tableau sources move
@@ -430,6 +465,7 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       _hintedWordId = null;
       _dragColumn = null;
     });
+    _afterMove();
   }
 
   void _drawStock() {
@@ -502,6 +538,8 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
   }
 
   Future<void> _handleWin() async {
+    if (_winHandled) return;
+    _winHandled = true;
     _stopTimer();
     setState(() {
       _isComplete = true;
@@ -509,49 +547,88 @@ class _SolitaireGameScreenState extends State<SolitaireGameScreen>
       _showFireworks = true;
     });
     _sound.play(SoundFx.victory);
-    // Fold this round's performance into the adaptive difficulty rating.
-    final result = RoundResult(
-      timeSec: _elapsed.inSeconds,
-      mistakes: _engine.mistakes,
-      hintsUsed: _hintsUsed,
-      bestCombo: _engine.bestCombo,
-      categoryCount: _engine.categoryCount,
-      won: true,
-    );
-    final oldSkill = widget.playerService.skill;
-    final newSkill = _director.updatedSkill(oldSkill, result, _engine.spec);
 
-    // A perfect round extends the clean-win streak; any blemish resets it.
-    final isClean = _director.isCleanRound(result);
-    final newStreak = isClean ? widget.playerService.cleanStreak + 1 : 0;
+    // Scoring/persistence must never prevent the victory screen from showing.
+    try {
+      // Fold this round's performance into the adaptive difficulty rating.
+      final result = RoundResult(
+        timeSec: _elapsed.inSeconds,
+        mistakes: _engine.mistakes,
+        hintsUsed: _hintsUsed,
+        bestCombo: _engine.bestCombo,
+        categoryCount: _engine.categoryCount,
+        won: true,
+      );
+      final oldSkill = widget.playerService.skill;
+      final newSkill = _director.updatedSkill(oldSkill, result, _engine.spec);
 
-    // Performance-scaled reward (harder boards + stars + streak + bonuses).
-    final reward = _director.computeReward(
-      result,
-      _engine.spec,
-      baseReward: widget.session.coinReward,
-      streak: newStreak,
-    );
+      // A perfect round extends the clean-win streak; any blemish resets it.
+      final isClean = _director.isCleanRound(result);
+      final newStreak = isClean ? widget.playerService.cleanStreak + 1 : 0;
 
-    final oldRank = PlayerRank.fromSkill(oldSkill);
-    final newRank = PlayerRank.fromSkill(newSkill);
-    _lastReward = reward;
-    _lastStreak = newStreak;
-    _rankName = newRank.name;
-    _rankProgress = newRank.progressAt(newSkill);
-    _rankedUp = newRank.index > oldRank.index;
+      // Performance-scaled reward (harder boards + stars + streak + bonuses).
+      final reward = _director.computeReward(
+        result,
+        _engine.spec,
+        baseReward: widget.session.coinReward,
+        streak: newStreak,
+      );
 
-    await widget.playerService.saveSkill(newSkill);
-    await widget.playerService.saveCleanStreak(newStreak);
-    await widget.playerService.addCoins(reward.total);
-    _sound.play(SoundFx.coins);
-    if (widget.session.isDaily) {
-      await widget.playerService.markDailyCompleted();
+      final oldRank = PlayerRank.fromSkill(oldSkill);
+      final newRank = PlayerRank.fromSkill(newSkill);
+      _lastReward = reward;
+      _lastStreak = newStreak;
+      _rankName = newRank.name;
+      _rankProgress = newRank.progressAt(newSkill);
+      _rankedUp = newRank.index > oldRank.index;
+
+      await widget.playerService.saveSkill(newSkill);
+      await widget.playerService.saveCleanStreak(newStreak);
+      await widget.playerService.addCoins(reward.total);
+      _sound.play(SoundFx.coins);
+      if (widget.session.isDaily) {
+        await widget.playerService.markDailyCompleted();
+      }
+    } catch (_) {
+      // Fall through to the victory screen regardless.
     }
+
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
     _haptic(HapticFeedback.heavyImpact);
     _showVictory();
+  }
+
+  /// Shown when the board is a genuine dead end (see [_isStuck]): the game can't
+  /// be won from here, so offer a non-punishing way forward instead of freezing.
+  void _showStuck() {
+    if (_stuckShown || _isComplete || !mounted) return;
+    _stuckShown = true;
+    _stopTimer();
+    _haptic(HapticFeedback.mediumImpact);
+    showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _StuckSheet(
+        canUndo: _engine.canUndo,
+        onUndo: () {
+          Navigator.pop(context);
+          setState(() => _stuckShown = false);
+          _startTimer();
+          _undo();
+        },
+        onRedeal: () {
+          Navigator.pop(context);
+          _initLevel();
+        },
+        onHome: () {
+          Navigator.pop(context);
+          Navigator.pop(context);
+        },
+      ),
+    );
   }
 
   void _showVictory() {
@@ -3491,6 +3568,101 @@ class _TutorialOverlayState extends State<_TutorialOverlay> {
             style: GameTextStyles.subtitle.copyWith(fontSize: 14.5, height: 1.6),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dead-end recovery
+// ---------------------------------------------------------------------------
+
+/// Shown when the board can no longer progress. Offers a non-punishing way out
+/// (undo the last move or redeal the round) so play never silently freezes.
+class _StuckSheet extends StatelessWidget {
+  const _StuckSheet({
+    required this.canUndo,
+    required this.onUndo,
+    required this.onRedeal,
+    required this.onHome,
+  });
+
+  final bool canUndo;
+  final VoidCallback onUndo;
+  final VoidCallback onRedeal;
+  final VoidCallback onHome;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.white, Color(0xFFF1F6FA)],
+          ),
+          borderRadius: BorderRadius.circular(GameRadii.xl),
+          boxShadow: GameShadows.lifted,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                color: GameColors.orange.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.lightbulb_outline_rounded,
+                  color: GameColors.orange, size: 34),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'لا توجد حركات متاحة',
+              style: GameTextStyles.title.copyWith(fontSize: 22),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'لا يمكن إكمال هذه الجولة من هنا. تراجع عن آخر حركة أو أعد '
+              'توزيع البطاقات لتجرّب من جديد.',
+              textAlign: TextAlign.center,
+              style: GameTextStyles.subtitle.copyWith(fontSize: 14.5, height: 1.6),
+            ),
+            const SizedBox(height: 22),
+            if (canUndo) ...[
+              PressableButton(
+                label: 'تراجع عن آخر حركة',
+                icon: Icons.undo_rounded,
+                gradient: GameGradients.blue,
+                height: 54,
+                onPressed: onUndo,
+              ),
+              const SizedBox(height: 12),
+            ],
+            PressableButton(
+              label: 'إعادة توزيع الجولة',
+              icon: Icons.refresh_rounded,
+              gradient: GameGradients.green,
+              height: 54,
+              pulseWhenReady: true,
+              onPressed: onRedeal,
+            ),
+            const SizedBox(height: 12),
+            PressableButton(
+              label: 'القائمة',
+              icon: Icons.home_rounded,
+              faceColor: GameColors.surface,
+              edgeColor: GameColors.borderDark,
+              textColor: GameColors.textPrimary,
+              height: 50,
+              onPressed: onHome,
+            ),
+          ],
+        ),
       ),
     );
   }
